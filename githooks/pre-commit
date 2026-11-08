@@ -1,0 +1,16 @@
+#!/bin/sh
+# Автоверсия сборки витрины: перед каждым коммитом ставит версию ГГГГ-ММ-ДД.N
+# (N — номер сборки за день) и добавляет изменённые файлы в коммит.
+# Включение (один раз): git config core.hooksPath githooks
+cd "$(git rev-parse --show-toplevel)" || exit 0
+[ -x ./bump-version.sh ] || exit 0
+OLD=$(sed -n 's/.*name="vitrina-build" content="\([^"]*\)".*/\1/p' index.html)
+TODAY=$(date +%Y-%m-%d)
+case "$OLD" in
+  "$TODAY".*) N=$(( ${OLD##*.} + 1 )) ;;
+  *) N=1 ;;
+esac
+NEW="$TODAY.$N"
+./bump-version.sh "$NEW" >/dev/null || exit 1
+git add index.html app.js data.js view.js demo.js
+echo "Витрина: версия сборки $OLD → $NEW"
