@@ -122,7 +122,7 @@ function renderStats(v) {
 
   const taken = v.activeGoals.flatMap((g) => g.taken).sort((a, b) => (b.takenAt || 0) - (a.takenAt || 0));
   const nextStep = v.activeGoals.map((g) => g.current).find(Boolean);
-  const stHot = v.changes && v.changes.newSteps.length > 0;
+  const stHot = !!(v.changes && v.changes.newSteps && v.changes.newSteps.length);
   const stTile = h('section', { class: 'tile' + (stHot ? ' tile-dark' : '') },
     h('span', { class: 'num-36' }, String(taken.length)),
     h('span', { class: 'tile-word' }, `${plural(taken.length, ['ступень', 'ступени', 'ступеней'])} цели`),
@@ -245,7 +245,7 @@ function renderTree(v, ui) {
       h('div', { class: 'bar-8' }, h('div', { style: `width:${Math.max(0, Math.min(100, ov.progress))}%` })),
       h('span', { class: 'meta-12 c' }, ov.hours > 0
         ? `${fmtPct(ov.progress)} до уровня ${ov.level + 1} · ${fmtH(ov.hours)} в ветке`
-        : `Первые часы в ${focus} поднимут уровень`)));
+        : `Первые часы в ветке «${focus}» поднимут уровень`)));
 
   // Узлы.
   const tip = h('div', { class: 'tip', role: 'tooltip', id: 'tree-tip', hidden: true });
@@ -432,13 +432,16 @@ function renderGoalCards(goals, ui) {
 
 // ---------- Лента ----------
 function renderFeed(v) {
-  const newKeys = (v.changes && v.changes.feedKeys) || new Set();
+  const ch = v.changes || {};
+  const bySkill = ch.bySkill || new Map();
+  const newStepNames = new Set((ch.newSteps || []).map((st) => st.name));
   const items = v.feed.map((e) => {
     let text, ic;
     if (e.type === 'hours') { text = `+${fmtH(e.hours)} ${vo(e.skill)} ${e.skill}`; ic = skillIcon(e.skill); }
     else if (e.type === 'level') { text = `${e.skill} → уровень ${e.level}`; ic = ICONS.up; }
     else { text = `Взята ступень «${e.name}»`; ic = ICONS.trophy; }
-    const hot = newKeys.has(feedKey(e)) && e.type !== 'hours';
+    const lu = e.type === 'level' && bySkill.get(e.skill);
+    const hot = (lu && e.level > lu.fromLevel && e.level <= lu.toLevel) || (e.type === 'step' && newStepNames.has(e.name));
     return h('li', { class: 'ev' + (hot ? ' is-hot' : '') },
       h('span', { class: 'ev-icon' }, icon(ic, 18, '#15171A')),
       h('span', { class: 'ev-text' }, text),
@@ -451,10 +454,38 @@ function renderFeed(v) {
         h('span', { class: 'meta-13' }, 'Первая закрытая задача с часами откроет навык и появится здесь.')));
 }
 
-function feedKey(e) {
-  return `${e.type}|${dayKey(e.date)}|${e.skill || e.name}|${e.level || ''}`;
+// Сводка для плашки: «+4,5 ч · Сценарий → уровень 2 · Продукт +1 ч».
+function changesSummary(ch) {
+  const parts = [];
+  if (ch.hours > 0.004) parts.push(`+${fmtH(ch.hours)}`);
+  for (const [name, c] of ch.bySkill) if (c.levelUp) parts.push(`${name} → уровень ${c.toLevel}`);
+  for (const b of ch.branchUps) parts.push(`${b.branch} → уровень ${b.level}`);
+  for (const [name, c] of ch.bySkill) if (!c.levelUp && c.hours > 0.004) parts.push(`${name} +${fmtH(c.hours)}`);
+  for (const st of ch.newSteps) parts.push(`Взята ступень «${st.name}»`);
+  const head = parts[0] && parts[0].startsWith('+') ? 1 : 0;
+  // Ступени важнее мелких часов: если не влезает, оставляем их и сокращаем середину.
+  const max = 4;
+  if (parts.length <= max) return parts.join(' · ');
+  const steps = parts.filter((x) => x.startsWith('Взята'));
+  const rest = parts.filter((x) => !x.startsWith('Взята'));
+  const keep = rest.slice(0, Math.max(head + 1, max - steps.length)).concat(steps);
+  return `${keep.join(' · ')} и ещё ${parts.length - keep.length}`;
 }
-function dayKey(d) { return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+
+// Плашка в шапке. null — хранилище недоступно, блок не показываем.
+function renderStatus(v) {
+  const ch = v.changes;
+  if (!ch) return null;
+  if (ch.any) {
+    return h('div', { class: 'status status-hot', role: 'status' },
+      h('span', { class: 'status-label' }, 'С прошлого захода'), changesSummary(ch));
+  }
+  let text;
+  if (ch.demoText) text = ch.demoText;
+  else if (ch.first) text = 'Первый заход — запомнил, с чего начинаем';
+  else text = 'С прошлого захода без изменений';
+  return h('div', { class: 'status', role: 'status' }, h('span', { class: 'status-dot' }), text);
+}
 
 // ---------- Сборка ----------
 function renderMain(v, ui) {
@@ -469,4 +500,4 @@ function renderMain(v, ui) {
   return root;
 }
 
-window.VitrinaView = { renderMain, feedKey };
+window.VitrinaView = { renderMain, renderStatus, changesSummary };

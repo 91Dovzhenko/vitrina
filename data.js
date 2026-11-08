@@ -290,6 +290,8 @@ function compute(data, now = new Date(), focusOverride = null) {
     activeGoals, stepsTaken: steps.filter((s) => s.taken).length, stepsTakenMonth,
     lastUpdate: settings.get('Последнее обновление'),
     firstTask,
+    takenStepIds: steps.filter((s) => s.taken).map((s) => s.id),
+    stepsById: new Map(steps.map((s) => [s.id, s])),
   };
 }
 
@@ -354,4 +356,38 @@ function goalLadder(goal, steps, measures) {
   };
 }
 
-window.VitrinaData = { RANGES, parseAll, compute, levelForHours, levelInfo, toDate, serialToDate, normHeader };
+// ---------- «Что изменилось с прошлого захода» (раздел 7 ТЗ) ----------
+// Снимок: только числа и названия навыков, без задач.
+function makeSnapshot(v) {
+  const skills = {};
+  for (const s of v.skills) skills[s.name] = [Math.round(s.hours * 100) / 100, s.level];
+  const branches = {};
+  for (const b of v.branches) branches[b] = (v.overall[b] || {}).level || 1;
+  return { at: Date.now(), skills, branches, steps: [...v.takenStepIds] };
+}
+
+function diffSnapshot(prev, v) {
+  if (!prev || typeof prev !== 'object' || !prev.skills) return { first: true, any: false };
+  const bySkill = new Map();
+  let hours = 0;
+  for (const s of v.skills) {
+    const old = prev.skills[s.name];
+    const oldH = old ? Number(old[0]) || 0 : 0;
+    const oldL = old ? Number(old[1]) || 1 : 1;
+    const dh = s.hours - oldH;
+    const up = s.level > oldL;
+    if (dh > 0.004 || up) {
+      bySkill.set(s.name, { hours: Math.max(0, dh), levelUp: up, fromLevel: oldL, toLevel: s.level });
+      if (dh > 0) hours += dh;
+    }
+  }
+  const branchUps = v.branches
+    .filter((b) => prev.branches && prev.branches[b] != null && (v.overall[b] || {}).level > prev.branches[b])
+    .map((b) => ({ branch: b, level: v.overall[b].level }));
+  const had = new Set(prev.steps || []);
+  const newSteps = v.takenStepIds.filter((id) => !had.has(id)).map((id) => v.stepsById.get(id)).filter(Boolean);
+  const any = bySkill.size > 0 || branchUps.length > 0 || newSteps.length > 0;
+  return { first: false, any, at: prev.at, hours, bySkill, branchUps, newSteps };
+}
+
+window.VitrinaData = { RANGES, parseAll, compute, makeSnapshot, diffSnapshot, levelForHours, levelInfo, toDate, serialToDate, normHeader };

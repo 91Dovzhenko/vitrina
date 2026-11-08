@@ -17,8 +17,12 @@ const CHECK_MODE = new URLSearchParams(location.search).get('check') === '1';
 
 // Настройки показа в браузере (не данные таблицы). Ключи включают ID таблицы.
 const store = {
-  key: (name) => `vitrina.${name}.${ACTIVE_SHEET}`,
+  // Демо хранит свои настройки отдельно от таблиц.
+  key: (name) => `vitrina.${name}.${new URLSearchParams(location.search).has('demo') ? 'demo' : ACTIVE_SHEET}`,
   get(name) { try { return localStorage.getItem(this.key(name)); } catch { return null; } },
+  ok() {
+    try { localStorage.setItem('vitrina.probe', '1'); localStorage.removeItem('vitrina.probe'); return true; } catch { return false; }
+  },
   set(name, val) {
     try { if (val == null) localStorage.removeItem(this.key(name)); else localStorage.setItem(this.key(name), val); } catch { /* приватный режим */ }
   },
@@ -94,6 +98,8 @@ function signOut() {
   auth.expiresAt = 0;
   state.view = null;
   state.data = null;
+  state.changes = null;
+  $('status').replaceChildren();
   $('report').replaceChildren();
   $('app-main').replaceChildren();
   $('sub').textContent = 'Виталий';
@@ -171,7 +177,9 @@ function h(tag, attrs, ...kids) {
 }
 
 // ---------- Экран ----------
-const state = { view: null, data: null };
+// prevSnap: снимок прошлого захода, читается один раз за открытие страницы.
+// changes: разница с ним; держится до следующего захода (и при «Обновить данные»).
+const state = { view: null, data: null, prevSnap: undefined, changes: null, demo: null };
 
 const ui = {
   get openGoal() { return store.get('openGoal'); },
@@ -187,7 +195,9 @@ const ui = {
 
 function render(focusGoalId) {
   if (!state.data) return;
-  const view = D.compute(state.data, new Date(), store.get('focus'));
+  const now = state.demo ? window.VitrinaDemo.now(state.demo) : new Date();
+  const view = D.compute(state.data, now, store.get('focus'));
+  view.changes = state.changes;
   showData(view);
   // После перерисовки вернуть фокус клавиатуры на кнопку цели.
   if (focusGoalId) {
@@ -206,8 +216,11 @@ function showLogin(message) {
 
 function showData(view) {
   state.view = view;
-  const updated = fmtCell(view.lastUpdate);
+  const updated = state.demo
+    ? `${fmtDate(view.now)}, ${view.now.getHours()}:${String(view.now.getMinutes()).padStart(2, '0')}`
+    : fmtCell(view.lastUpdate);
   $('updated').textContent = `Обновлено ${updated}`;
+  $('status').replaceChildren(...[window.VitrinaView.renderStatus(view)].filter(Boolean));
   const check = $('check-chip');
   check.hidden = view.checkCount === 0;
   check.textContent = `${view.checkCount} на проверку`;
@@ -217,15 +230,31 @@ function showData(view) {
   $('screen-login').hidden = true;
   $('screen-data').hidden = false;
   $('actions').hidden = false;
+  $('refresh').hidden = !!state.demo;
+  $('logout').hidden = !!state.demo;
 }
 
 async function load() {
   const keys = Object.keys(D.RANGES);
   const res = await sheetsBatchGet(keys.map((k) => D.RANGES[k]));
   state.data = D.parseAll(res.valueRanges || []);
+  updateChanges();
   render();
   const now = new Date();
   $('data-message').textContent = `Прочитано из таблицы в ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+// Сравнить со снимком прошлого захода и сохранить новый снимок (раздел 7).
+function updateChanges() {
+  if (!store.ok()) { state.changes = null; return; }
+  if (state.prevSnap === undefined) {
+    try { state.prevSnap = JSON.parse(store.get('snapshot') || 'null'); } catch { state.prevSnap = null; }
+  }
+  const view = D.compute(state.data, new Date(), store.get('focus'));
+  const ch = D.diffSnapshot(state.prevSnap, view);
+  if (!ch.any && view.period.total.sum === 0) ch.demoText = 'Система запущена — ждём первых часов';
+  state.changes = ch;
+  store.set('snapshot', JSON.stringify(D.makeSnapshot(view)));
 }
 
 // ---------- Сверка (шаг 3): расчёты рядом с числами таблицы ----------
@@ -383,6 +412,18 @@ function waitForGis(timeoutMs = 10000) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   $('test-chip').hidden = !TEST_SHEET;
+  const demo = window.VitrinaDemo && window.VitrinaDemo.variant;
+  if (demo) {
+    // Демо: данные из дизайна, без входа и без чтения таблицы.
+    state.demo = demo;
+    state.data = window.VitrinaDemo.data(demo);
+    state.changes = window.VitrinaDemo.changes(demo);
+    const chip = $('test-chip');
+    chip.textContent = `Демо · ${demo}`;
+    chip.hidden = false;
+    render();
+    return;
+  }
   $('login').addEventListener('click', onLoginClick);
   $('refresh').addEventListener('click', onRefreshClick);
   $('logout').addEventListener('click', signOut);
