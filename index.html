@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#EEF0EB">
+  <title>Витрина роста</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Unbounded:wght@600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 19c2-6 5-9 14-14 M5 19c0-4 1.5-7 4-9 M5 19c4 0 7-1.5 9-4" stroke="#C5F25A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="brand-text">
+          <div class="title">Витрина роста</div>
+          <div class="meta" id="sub">Виталий</div>
+        </div>
+      </div>
+      <div class="actions" id="actions" hidden>
+        <span class="meta" id="updated"></span>
+        <button type="button" class="btn btn-quiet" id="refresh">Обновить данные</button>
+        <button type="button" class="btn btn-quiet" id="logout">Выйти</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- Экран входа -->
+      <section class="card login" id="screen-login">
+        <img class="login-avatar" src="avatar.png" alt="" width="133" height="380">
+        <div class="login-body">
+          <h1>Войдите, чтобы увидеть витрину</h1>
+          <p class="meta">Данные читаются из вашей Google Таблицы только для просмотра. На странице ничего не хранится.</p>
+          <button type="button" class="btn btn-primary" id="login" disabled>Войти через Google</button>
+          <p class="note" id="message" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <!-- Каркас: экран после входа -->
+      <section class="card" id="screen-data" hidden>
+        <h2>Вход работает</h2>
+        <p class="meta">Таблица прочитана. Последнее обновление:</p>
+        <div class="big" id="last-update">—</div>
+        <p class="note" id="data-message" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
