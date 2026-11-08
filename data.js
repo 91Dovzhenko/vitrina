@@ -209,7 +209,7 @@ function hoursByBranch(skills, bySkill) {
 
 function sumMap(m) { let x = 0; for (const v of m.values()) x += v; return x; }
 
-function compute(data, now = new Date()) {
+function compute(data, now = new Date(), focusOverride = null) {
   const { skills, tasks, goals, steps, measures, curve, settings } = data;
   const weekFrom = startOfWeek(now);
   const monthFrom = startOfMonth(now);
@@ -229,7 +229,8 @@ function compute(data, now = new Date()) {
   for (const p of Object.values(period)) p.sum = sumMap(p.byBranch);
 
   // Общий уровень: ветка фокуса — из «Настроек», другие — по кривой (п. 7).
-  const focusBranch = str(settings.get('Ветка фокуса')) || branches[0] || '';
+  const tableFocus = str(settings.get('Ветка фокуса')) || branches[0] || '';
+  const focusBranch = focusOverride && branches.includes(focusOverride) ? focusOverride : tableFocus;
   const branchHoursFromSkills = new Map();
   for (const s of skills) branchHoursFromSkills.set(s.branch, (branchHoursFromSkills.get(s.branch) || 0) + s.hours);
   const overall = {};
@@ -238,9 +239,9 @@ function compute(data, now = new Date()) {
     const calc = levelInfo(curve, hours);
     overall[b] = { hours, ...calc, source: 'кривая' };
   }
-  if (focusBranch && settings.has('Общий уровень')) {
-    overall[focusBranch] = {
-      ...(overall[focusBranch] || {}),
+  if (tableFocus && settings.has('Общий уровень')) {
+    overall[tableFocus] = {
+      ...(overall[tableFocus] || {}),
       hours: num(settings.get('Часы ветки фокуса')),
       level: Math.round(num(settings.get('Общий уровень'))),
       progress: pct(settings.get('Прогресс общего уровня')),
@@ -280,13 +281,15 @@ function compute(data, now = new Date()) {
 
   // 10. Цели и лестницы.
   const activeGoals = goals.filter((g) => g.status === 'активна').map((g) => goalLadder(g, steps, measures));
+  const firstTask = tasks.reduce((m, t) => (!m || t.date < m ? t.date : m), null);
   const stepsTakenMonth = steps.filter((s) => s.taken && s.takenAt && s.takenAt >= monthFrom).length;
 
   return {
-    now, curve, focusBranch, branches, skills, period, overall,
+    now, curve, focusBranch, tableFocus, branches, skills, period, overall,
     levelsThisMonth, grownSkills, overallMonth, growingSkill, feed, checkCount,
     activeGoals, stepsTaken: steps.filter((s) => s.taken).length, stepsTakenMonth,
     lastUpdate: settings.get('Последнее обновление'),
+    firstTask,
   };
 }
 
@@ -334,7 +337,8 @@ function buildFeed(tasks, steps, curve, activeNames) {
 function goalLadder(goal, steps, measures) {
   const own = steps.filter((s) => s.goalId === goal.id).sort((a, b) => a.n - b.n);
   const current = own.find((s) => !s.taken) || null;
-  const nMeasures = measures.filter((m) => m.goalId === goal.id).length;
+  const own3 = measures.filter((m) => m.goalId === goal.id && m.month).sort((a, b) => a.month - b.month);
+  const nMeasures = own3.length;
   const needs3 = !!current && current.rule.includes('3 мес') && nMeasures < 3;
   return {
     ...goal,
@@ -345,6 +349,7 @@ function goalLadder(goal, steps, measures) {
     stepN: current ? current.n : own.length,
     stepM: own.length,
     nMeasures,
+    measures: own3,
     needs3,
   };
 }

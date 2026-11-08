@@ -12,6 +12,17 @@ const TEST_SHEET = (() => {
   return v && /^[A-Za-z0-9_-]{20,100}$/.test(v) && v !== SHEET_ID ? v : null;
 })();
 const ACTIVE_SHEET = TEST_SHEET || SHEET_ID;
+// ?check=1 — под экраном показать сверку расчётов с таблицей.
+const CHECK_MODE = new URLSearchParams(location.search).get('check') === '1';
+
+// Настройки показа в браузере (не данные таблицы). Ключи включают ID таблицы.
+const store = {
+  key: (name) => `vitrina.${name}.${ACTIVE_SHEET}`,
+  get(name) { try { return localStorage.getItem(this.key(name)); } catch { return null; } },
+  set(name, val) {
+    try { if (val == null) localStorage.removeItem(this.key(name)); else localStorage.setItem(this.key(name), val); } catch { /* приватный режим */ }
+  },
+};
 
 // Токен живёт только в памяти страницы.
 const auth = { token: null, expiresAt: 0, client: null, pending: null };
@@ -82,7 +93,10 @@ function signOut() {
   auth.token = null;
   auth.expiresAt = 0;
   state.view = null;
+  state.data = null;
   $('report').replaceChildren();
+  $('app-main').replaceChildren();
+  $('sub').textContent = 'Виталий';
   if (t && window.google) google.accounts.oauth2.revoke(t, () => {});
   showLogin('');
 }
@@ -157,7 +171,30 @@ function h(tag, attrs, ...kids) {
 }
 
 // ---------- Экран ----------
-const state = { view: null };
+const state = { view: null, data: null };
+
+const ui = {
+  get openGoal() { return store.get('openGoal'); },
+  toggleGoal(id) {
+    store.set('openGoal', this.openGoal === id ? null : id);
+    render(id);
+  },
+  setFocus(branch) {
+    store.set('focus', branch);
+    render();
+  },
+};
+
+function render(focusGoalId) {
+  if (!state.data) return;
+  const view = D.compute(state.data, new Date(), store.get('focus'));
+  showData(view);
+  // После перерисовки вернуть фокус клавиатуры на кнопку цели.
+  if (focusGoalId) {
+    const btn = document.querySelector(`[aria-controls="goal-${CSS.escape(focusGoalId)}"]`);
+    if (btn) btn.focus();
+  }
+}
 
 function showLogin(message) {
   $('screen-data').hidden = true;
@@ -174,9 +211,9 @@ function showData(view) {
   const check = $('check-chip');
   check.hidden = view.checkCount === 0;
   check.textContent = `${view.checkCount} на проверку`;
-  const now = new Date();
-  $('data-message').textContent = `Прочитано из таблицы в ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-  renderReport(view);
+  $('sub').textContent = view.firstTask ? `Виталий · система идёт с ${fmtDate(view.firstTask)}` : 'Виталий';
+  $('app-main').replaceChildren(window.VitrinaView.renderMain(view, ui));
+  if (CHECK_MODE) renderReport(view); else $('report').replaceChildren();
   $('screen-login').hidden = true;
   $('screen-data').hidden = false;
   $('actions').hidden = false;
@@ -185,8 +222,10 @@ function showData(view) {
 async function load() {
   const keys = Object.keys(D.RANGES);
   const res = await sheetsBatchGet(keys.map((k) => D.RANGES[k]));
-  const data = D.parseAll(res.valueRanges || []);
-  showData(D.compute(data));
+  state.data = D.parseAll(res.valueRanges || []);
+  render();
+  const now = new Date();
+  $('data-message').textContent = `Прочитано из таблицы в ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
 // ---------- Сверка (шаг 3): расчёты рядом с числами таблицы ----------
