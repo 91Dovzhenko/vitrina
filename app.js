@@ -1,15 +1,23 @@
 'use strict';
 
-// Не секретны: ID клиента OAuth и ID таблицы.
+// Не секретны: ID клиента OAuth и ID рабочей таблицы.
 const CLIENT_ID = '691644833271-fdg5938hbajg5vvbl0ajq9d37bdl8l94.apps.googleusercontent.com';
 const SHEET_ID = '1jnd_dLwVKeCmVtFPlNCCBnxtE29wPWGz3NbwIwd8Br8';
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
 const API = 'https://sheets.googleapis.com/v4/spreadsheets/';
 
+// ?sheet=<ID> — читать тестовую таблицу вместо рабочей. Не запоминается.
+const TEST_SHEET = (() => {
+  const v = new URLSearchParams(location.search).get('sheet');
+  return v && /^[A-Za-z0-9_-]{20,100}$/.test(v) && v !== SHEET_ID ? v : null;
+})();
+const ACTIVE_SHEET = TEST_SHEET || SHEET_ID;
+
 // Токен живёт только в памяти страницы.
 const auth = { token: null, expiresAt: 0, client: null, pending: null };
 
 const $ = (id) => document.getElementById(id);
+const D = window.VitrinaData;
 
 // ---------- Сообщения (спокойным текстом) ----------
 const MSG = {
@@ -73,6 +81,8 @@ function signOut() {
   const t = auth.token;
   auth.token = null;
   auth.expiresAt = 0;
+  state.view = null;
+  $('report').replaceChildren();
   if (t && window.google) google.accounts.oauth2.revoke(t, () => {});
   showLogin('');
 }
@@ -88,7 +98,7 @@ async function sheetsBatchGet(ranges, retried = false) {
 
   let res;
   try {
-    res = await fetch(`${API}${SHEET_ID}/values:batchGet?${qs}`, {
+    res = await fetch(`${API}${ACTIVE_SHEET}/values:batchGet?${qs}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch {
@@ -105,42 +115,50 @@ async function sheetsBatchGet(ranges, retried = false) {
   return res.json();
 }
 
-// Пары «Параметр → Значение» из Настройки!K:L, поиск по тексту в K.
-function readSettings(values) {
-  const map = new Map();
-  for (const row of values || []) {
-    const key = row[0] == null ? '' : String(row[0]).trim();
-    if (key) map.set(key, row[1]);
-  }
-  return map;
-}
-
-// ---------- Форматирование ----------
+// ---------- Форматирование (раздел 6.11) ----------
 const MONTHS = ['янв', 'февр', 'марта', 'апр', 'мая', 'июня', 'июля', 'авг', 'сент', 'окт', 'нояб', 'дек'];
 const NBSP = ' ';
 
-// Серийный номер Google (дни с 30.12.1899) → местная дата.
-function serialToDate(serial) {
-  const days = Math.floor(serial);
-  const ms = Math.round((serial - days) * 86400000);
-  const d = new Date(1899, 11, 30 + days);
-  d.setMilliseconds(ms);
-  return d;
+function fmtNum(x, maxDec = 2) {
+  const r = Math.round((Number(x) || 0) * 10 ** maxDec) / 10 ** maxDec;
+  const [i, f] = Math.abs(r).toFixed(maxDec).replace(/0+$/, '').replace(/\.$/, '').split('.');
+  const int = i.replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
+  return (r < 0 ? '−' : '') + int + (f ? ',' + f : '');
+}
+const fmtH = (x) => fmtNum(x) + NBSP + 'ч';
+const fmtPct = (x) => Math.round(Number(x) || 0) + '%';
+
+function fmtDate(d) {
+  if (!d) return '—';
+  let s = `${d.getDate()}${NBSP}${MONTHS[d.getMonth()]}`;
+  if (d.getFullYear() !== new Date().getFullYear()) s += `${NBSP}${d.getFullYear()}`;
+  return s;
 }
 
-function formatDateTime(v) {
-  if (typeof v === 'number') {
-    const d = serialToDate(v);
-    const hasTime = v % 1 !== 0;
-    let s = `${d.getDate()}${NBSP}${MONTHS[d.getMonth()]}`;
-    if (d.getFullYear() !== new Date().getFullYear()) s += `${NBSP}${d.getFullYear()}`;
-    if (hasTime) s += `, ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-    return s;
-  }
+function fmtCell(v) {
+  if (typeof v === 'number') return fmtDate(D.serialToDate(v));
   return v == null || v === '' ? '—' : String(v);
 }
 
+function fmtValue(v, unit) {
+  if (v == null) return '—';
+  return fmtNum(v) + (unit ? NBSP + unit : '');
+}
+
+// Разметка без innerHTML: h('div', {class: 'x'}, 'текст', child…)
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v; else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : String(k));
+  return el;
+}
+
 // ---------- Экран ----------
+const state = { view: null };
+
 function showLogin(message) {
   $('screen-data').hidden = true;
   $('actions').hidden = true;
@@ -149,25 +167,130 @@ function showLogin(message) {
   $('login').disabled = !auth.client;
 }
 
-function showData(settings) {
-  const updated = formatDateTime(settings.get('Последнее обновление'));
-  $('last-update').textContent = updated;
+function showData(view) {
+  state.view = view;
+  const updated = fmtCell(view.lastUpdate);
   $('updated').textContent = `Обновлено ${updated}`;
+  const check = $('check-chip');
+  check.hidden = view.checkCount === 0;
+  check.textContent = `${view.checkCount} на проверку`;
   const now = new Date();
   $('data-message').textContent = `Прочитано из таблицы в ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  renderReport(view);
   $('screen-login').hidden = true;
   $('screen-data').hidden = false;
   $('actions').hidden = false;
 }
 
 async function load() {
-  const data = await sheetsBatchGet(['Настройки!K1:L30']);
-  const settings = readSettings(data.valueRanges[0].values);
-  showData(settings);
+  const keys = Object.keys(D.RANGES);
+  const res = await sheetsBatchGet(keys.map((k) => D.RANGES[k]));
+  const data = D.parseAll(res.valueRanges || []);
+  showData(D.compute(data));
+}
+
+// ---------- Сверка (шаг 3): расчёты рядом с числами таблицы ----------
+function table(head, rows) {
+  return h('div', { class: 'table-wrap' },
+    h('table', {},
+      h('thead', {}, h('tr', {}, head.map((c) => h('th', { scope: 'col' }, c)))),
+      h('tbody', {}, rows.map((r) => h('tr', {}, r.map((c) => h('td', {}, c)))))));
+}
+
+// Отметка расхождения: «7,5 ч» или «7,5 ч ≠ 7 ч».
+function same(a, b, fmt) {
+  const ok = Math.abs((a || 0) - (b || 0)) < 0.005;
+  return ok ? fmt(a) : h('span', { class: 'diff' }, `${fmt(a)} ≠ ${fmt(b)}`);
+}
+
+function section(title, ...kids) {
+  return h('section', { class: 'card report-card' }, h('h2', {}, title), ...kids);
+}
+
+function renderReport(v) {
+  const { period } = v;
+  const weekTo = new Date(v.now);
+  const weekLabel = `${fmtDate(period.week.from)} – ${fmtDate(weekTo)}`;
+
+  // Навыки.
+  const skillRows = v.skills.map((s) => [
+    s.name,
+    s.branch,
+    String(s.level),
+    same(D.levelForHours(v.curve, s.hours), s.level, String),
+    fmtH(s.hours),
+    same(period.total.bySkill.get(s.name) || 0, s.hours, fmtH),
+    fmtH(period.month.bySkill.get(s.name) || 0),
+    fmtH(period.week.bySkill.get(s.name) || 0),
+    fmtPct(s.progress),
+    fmtH(s.toNext),
+  ]);
+
+  // Ветки.
+  const branchRows = v.branches.map((b) => {
+    const o = v.overall[b] || {};
+    return [
+      b + (b === v.focusBranch ? ' (фокус)' : ''),
+      fmtH(period.week.byBranch.get(b) || 0),
+      fmtH(period.month.byBranch.get(b) || 0),
+      fmtH(period.total.byBranch.get(b) || 0),
+      `${o.level} (${fmtPct(o.progress)})`,
+      o.source === 'таблица' ? `из «Настроек», ${fmtH(o.hours)}` : `по кривой, ${fmtH(o.hours)}`,
+    ];
+  });
+
+  const grown = v.grownSkills.map((g) => `${g.name} → ${g.to}`);
+  if (v.overallMonth) grown.unshift(`${v.overallMonth.branch} → ${v.overallMonth.to}`);
+
+  const totals = [
+    ['Неделя', weekLabel],
+    ['Часы за неделю (сумма веток)', fmtH(period.week.sum)],
+    ['Часы за месяц', fmtH(period.month.sum)],
+    ['Часы всего', fmtH(period.total.sum)],
+    ['Уровней за месяц', `${v.levelsThisMonth}${grown.length ? ' · ' + grown.join(', ') : ''}`],
+    ['Растущий навык недели', v.growingSkill ? `${v.growingSkill.name}, +${fmtH(v.growingSkill.hours)} с понедельника` : 'за неделю часов нет'],
+    ['На проверку', String(v.checkCount)],
+    ['Ступеней взято (всего / в этом месяце)', `${v.stepsTaken} / ${v.stepsTakenMonth}`],
+    ['Активных целей', `${v.activeGoals.length} → ${v.activeGoals.length > 1 ? 'карточки' : 'лестница сразу'}`],
+  ];
+
+  const goals = v.activeGoals.map((g) => h('div', { class: 'goal' },
+    h('h3', {}, `${g.id} · ${g.name}`),
+    h('p', { class: 'meta' }, `ступень ${g.stepN} из ${g.stepM} · сегменты: ${g.steps.map((s) => (s.taken ? '■' : '□')).join('')}`),
+    h('ul', {},
+      g.taken.map((s) => h('li', {}, `✓ ${s.n}. ${s.name} — взята ${fmtDate(s.takenAt)}`)),
+      g.current && h('li', { class: 'current' },
+        `→ ${g.current.n}. ${g.current.name}: `,
+        g.needs3
+          ? `нужно 3 месячных замера, есть ${g.nMeasures}`
+          : `${fmtValue(g.current.fact, '')} из ${fmtValue(g.current.threshold, g.current.unit)}`,
+        g.current.rule ? ` (${g.current.rule})` : ''),
+      g.future.map((s) => h('li', { class: 'future' }, `${s.n}. ${s.name} — ${fmtValue(s.threshold, s.unit)}`)),
+    ),
+  ));
+
+  const feed = v.feed.map((e) => {
+    let text;
+    if (e.type === 'hours') text = `+${fmtH(e.hours)} в ${e.skill}`;
+    else if (e.type === 'level') text = `${e.skill} → уровень ${e.level}`;
+    else text = `Взята ступень «${e.name}»`;
+    return [fmtDate(e.date), text];
+  });
+
+  $('report').replaceChildren(
+    section('Навыки',
+      table(['Навык', 'Ветка', 'Уровень', 'Уровень по кривой', 'Опыт (табл.)', 'Часы по задачам', 'Месяц', 'Неделя', 'Прогресс', 'До след.'], skillRows)),
+    section('Ветки и общий уровень',
+      table(['Ветка', 'Неделя', 'Месяц', 'Всего', 'Общий уровень', 'Откуда'], branchRows)),
+    section('Итоги', table(['Показатель', 'Значение'], totals)),
+    section('Цели', goals.length ? goals : h('p', { class: 'meta' }, 'Активных целей нет')),
+    section('Лента событий', feed.length ? table(['День', 'Событие'], feed) : h('p', { class: 'meta' }, 'Событий пока нет')),
+  );
 }
 
 function handleError(err) {
   const kind = err instanceof AppError ? err.kind : 'googleDown';
+  if (!(err instanceof AppError)) console.error(err && err.message);
   const text = MSG[kind] || MSG.googleDown;
   if (kind === 'noAccess' || kind === 'cancelled' || kind === 'gisFailed' || !auth.token) {
     // Нет действующего доступа — обратно к кнопке входа, данных не показываем.
@@ -220,6 +343,7 @@ function waitForGis(timeoutMs = 10000) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  $('test-chip').hidden = !TEST_SHEET;
   $('login').addEventListener('click', onLoginClick);
   $('refresh').addEventListener('click', onRefreshClick);
   $('logout').addEventListener('click', signOut);
