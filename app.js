@@ -153,7 +153,8 @@ function showData(settings) {
   const updated = formatDateTime(settings.get('Последнее обновление'));
   $('last-update').textContent = updated;
   $('updated').textContent = `Обновлено ${updated}`;
-  $('data-message').textContent = '';
+  const now = new Date();
+  $('data-message').textContent = `Прочитано из таблицы в ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
   $('screen-login').hidden = true;
   $('screen-data').hidden = false;
   $('actions').hidden = false;
@@ -194,8 +195,16 @@ async function onLoginClick() {
 
 async function onRefreshClick() {
   const btn = $('refresh');
+  const label = btn.textContent;
   btn.disabled = true;
-  try { await load(); } catch (e) { handleError(e); } finally { btn.disabled = false; }
+  btn.textContent = 'Обновляю…';
+  $('data-message').textContent = '';
+  // Минимум 0,5 с, чтобы отклик был заметен даже при быстром ответе.
+  const pause = new Promise((r) => setTimeout(r, 500));
+  try { await Promise.all([load(), pause]); } catch (e) { handleError(e); } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
 }
 
 // GIS грузится асинхронно — ждём его до 10 с.
