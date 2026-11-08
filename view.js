@@ -373,7 +373,6 @@ function currentStepCard(g, compact) {
 function ladderSteps(g, compact) {
   // Сверху — вершина, снизу — первая ступень, как в дизайне.
   const desc = [...g.steps].sort((a, b) => b.n - a.n);
-  const top = desc[0];
   return desc.map((st) => {
     if (st.taken) {
       return h('li', { class: 'step-taken' },
@@ -388,7 +387,7 @@ function ladderSteps(g, compact) {
     return h('li', { class: compact ? 'step-future compact' : 'step-future' },
       h('span', { class: 'step-n' }, String(st.n)),
       h('span', { class: 'step-title muted2' }, st.name),
-      st === top && h('span', { role: 'img', 'aria-label': 'Цель' }, icon(ICONS.flag, 18, '#3E423C')));
+      st.n === g.stepM && h('span', { role: 'img', 'aria-label': 'Цель' }, icon(ICONS.flag, 18, '#3E423C')));
   });
 }
 
@@ -487,8 +486,143 @@ function renderStatus(v) {
   return h('div', { class: 'status', role: 'status' }, h('span', { class: 'status-dot' }), text);
 }
 
+// ---------- Телефон (до 768 px) по design/Mobile.dc.html ----------
+const MOBILE_MQ = window.matchMedia('(max-width: 767px)');
+const RING_M = 119.38; // 2π·19
+
+function renderMobileHero(v) {
+  const ov = v.overall[v.focusBranch] || { level: 1, progress: 0, hours: 0 };
+  return h('section', { class: 'card m-hero' },
+    h('div', { class: 'm-avatar' },
+      h('div', { class: 'm-feet', 'aria-hidden': 'true' }),
+      h('img', { src: 'avatar.png', alt: 'Персонаж — Виталий', width: 78, height: 222 })),
+    h('div', { class: 'm-hero-body' },
+      h('span', { class: 'm-pill is-focus' }, v.focusBranch),
+      h('div', { class: 'overall-row' }, h('span', { class: 'overall-word' }, 'Уровень'), h('span', { class: 'num-56' }, String(ov.level))),
+      h('div', { class: 'bar-8 w100' }, h('div', { style: `width:${Math.max(0, Math.min(100, ov.progress))}%` })),
+      h('span', { class: 'meta-12 lh' }, ov.hours > 0
+        ? `${fmtPct(ov.progress)} до уровня ${ov.level + 1} · ${fmtH(ov.hours)} в ветке`
+        : `Первые часы в ветке «${v.focusBranch}» поднимут уровень`)));
+}
+
+function renderMobileBranch(v, b, ui) {
+  const isF = b === v.focusBranch;
+  const hl = (v.changes && v.changes.bySkill) || new Map();
+  const list = v.skills.filter((x) => x.branch === b).map((x) => {
+    const total = v.period.total.bySkill.get(x.name) || 0;
+    return { ...x, total, open: total > 0 || x.level > 1, ch: hl.get(x.name) };
+  });
+  // Открытые навыки сверху, порядок внутри — как в таблице.
+  list.sort((a, c) => c.open - a.open);
+  const openN = list.filter((x) => x.open).length;
+  const pill = h('button', {
+    type: 'button', class: 'm-pill' + (isF ? ' is-focus' : ''), 'aria-pressed': String(isF),
+    'aria-label': isF ? `${b} — ветка фокуса` : `Сделать ${b} веткой фокуса`,
+  }, b);
+  pill.addEventListener('click', () => ui.setFocus(b));
+  const rows = list.map((x) => {
+    const pct = Math.max(0, Math.min(100, x.progress));
+    if (!x.open) {
+      return h('div', { class: 'm-skill' },
+        h('div', { class: 'm-node' }, h('div', { class: 'm-locked' }, icon(skillIcon(x.name), 18, '#8E9289'))),
+        h('div', { class: 'col2 grow1' },
+          h('span', { class: 'm-name is-locked' }, x.name),
+          h('span', { class: 'meta-12 w500' }, `не открыт · первый уровень через ${fmtH(x.toNext)}`)));
+    }
+    const up = x.ch && x.ch.levelUp;
+    const grown = x.ch && x.ch.hours > 0.004 ? x.ch.hours : 0;
+    return h('div', { class: 'm-skill' },
+      h('div', { class: 'm-node', style: `box-shadow:0 0 0 4px ${isF ? ACCENT_SOFT : 'rgba(21, 23, 26, 0.04)'}` },
+        s('svg', { width: 44, height: 44, viewBox: '0 0 44 44', fill: 'none', 'aria-hidden': 'true', class: 'ring' },
+          s('circle', { cx: 22, cy: 22, r: 19, stroke: '#EEF0EA', 'stroke-width': 3.5 }),
+          s('circle', { cx: 22, cy: 22, r: 19, stroke: ACCENT, 'stroke-width': 3.5, 'stroke-linecap': 'round', 'stroke-dasharray': `${((up ? 100 : pct) / 100 * RING_M).toFixed(1)} ${RING_M}` })),
+        h('span', { class: 'node-icon' }, icon(skillIcon(x.name), 20, '#15171A'))),
+      h('div', { class: 'col6 grow1' },
+        h('div', { class: 'm-line' },
+          h('span', { class: 'm-name' }, x.name),
+          h('span', { class: 'm-total' }, grown ? h('span', { class: 'm-grown' }, `+${fmtH(grown)}`) : null, fmtH(x.total))),
+        h('div', { class: 'bar-6 track' }, h('div', { style: `width:${up ? 100 : pct}%;background:${ACCENT}` })),
+        h('span', { class: 'meta-12 w500' + (up ? ' is-up' : '') },
+          up ? `Уровень ${x.level} · только что` : `${fmtPct(pct)} · до уровня ${x.level + 1} ещё ${fmtH(x.toNext)}`)),
+      h('span', { class: 'm-badge' + (up ? ' is-up' : ''), 'aria-label': `уровень ${x.level}` }, String(x.level)));
+  });
+  return h('section', { class: 'card m-branch' },
+    h('div', { class: 'm-branch-head' }, pill,
+      h('span', { class: 'meta-12' }, `${isF ? 'ветка фокуса · ' : ''}${openN} из ${list.length} открыто`)),
+    rows);
+}
+
+function renderMobileWeek(v) {
+  const [b1, b2] = v.branches;
+  const p = v.period;
+  const w1 = p.week.byBranch.get(b1) || 0;
+  const w2 = p.week.byBranch.get(b2) || 0;
+  const sum = w1 + w2;
+  const row = (label, per) => [
+    h('span', { class: 'semi' }, label),
+    h('span', { class: 'strong r' }, fmtH(per.byBranch.get(b1) || 0)),
+    h('span', { class: 'strong r' }, fmtH(per.byBranch.get(b2) || 0))];
+  return h('section', { class: 'card m-week' },
+    h('div', { class: 'card-head base' }, h('h2', { class: 'h-card' }, 'Эта неделя'), h('span', { class: 'meta' }, weekRange(p.week.from, v.now))),
+    h('div', { class: 'big-row' }, h('span', { class: 'num-40' }, fmtNum(sum)), h('span', { class: 'unit' }, 'ч')),
+    h('div', { class: 'split', style: sum > 0 ? '' : 'background:#EEF0EA' },
+      h('div', { style: `width:${sum ? (w1 / sum) * 100 : 0}%;background:${ACCENT}` }),
+      h('div', { style: `width:${sum ? (w2 / sum) * 100 : 0}%;background:#15171A` })),
+    h('div', { class: 'grid3 m-grid' },
+      h('span', {}),
+      h('span', { class: 'muted r m-key' }, h('span', { class: 'sw8', style: `background:${ACCENT}` }), b1 || ''),
+      h('span', { class: 'muted r m-key' }, h('span', { class: 'sw8', style: 'background:#15171A' }), b2 || ''),
+      ...row('Неделя', p.week), ...row(MONTHS_NOM[v.now.getMonth()], p.month), ...row('Всего', p.total)));
+}
+
+function renderMobileGrow(v) {
+  const g = v.growingSkill;
+  if (!g) {
+    return h('section', { class: 'card m-grow is-none' },
+      h('div', { class: 'grow-empty m48' }),
+      h('div', { class: 'col2' }, h('span', { class: 'm-grow-title' }, 'Растущий навык недели'), h('span', { class: 'meta-13' }, 'Появится после первых часов')));
+  }
+  return h('section', { class: 'card m-grow' },
+    h('div', { class: 'grow-icon m48' }, icon(skillIcon(g.name), 22, ACCENT)),
+    h('div', { class: 'col2' },
+      h('span', { class: 'm-grow-title' }, 'Растущий навык недели'),
+      h('span', { class: 'm-grow-name' }, g.name),
+      h('span', { class: 'm-grow-sub' }, `+${fmtH(g.hours)} с понедельника`)));
+}
+
+// Лестница на телефоне: последняя взятая, текущая, следующая и «ещё N».
+function renderMobileGoal(g) {
+  const asc = [...g.steps].sort((a, b) => a.n - b.n);
+  const lastTaken = g.taken.length ? [...g.taken].sort((a, b) => b.n - a.n)[0] : null;
+  const next = g.current ? asc.find((st) => !st.taken && st.n > g.current.n) : null;
+  const shown = [g.current, next].filter(Boolean);
+  const rest = asc.filter((st) => !st.taken && !shown.includes(st)).length;
+  const sub = { ...g, steps: [lastTaken, ...shown].filter(Boolean) };
+  return h('section', { class: 'card ladder m-ladder' },
+    h('div', { class: 'card-head' }, h('h2', { class: 'h-card' }, 'Лестница цели'), h('span', { class: 'chip-soft' }, `${g.taken.length} из ${g.stepM} взято`)),
+    h('div', { class: 'col2 g4' }, h('span', { class: 'goal-title m18' }, g.name), g.criterion && h('span', { class: 'meta-13' }, g.criterion)),
+    h('ol', { class: 'steps' }, ladderSteps(sub, false).reverse()),
+    rest > 0 && h('span', { class: 'meta-13 semi pad4' }, `Ещё ${rest} ${plural(rest, ['ступень', 'ступени', 'ступеней'])} до цели`));
+}
+
+function renderMobile(v, ui) {
+  const branches = [v.focusBranch, ...v.branches.filter((b) => b !== v.focusBranch)].filter(Boolean);
+  const stats = renderStats(v);
+  const tiles = stats.querySelector('.tiles');
+  const goals = v.activeGoals;
+  return h('div', { class: 'm-layout' },
+    renderMobileHero(v),
+    branches.map((b) => renderMobileBranch(v, b, ui)),
+    renderMobileWeek(v),
+    tiles,
+    renderMobileGrow(v),
+    goals.length > 1 ? renderGoalCards(goals, ui) : goals.length === 1 ? renderMobileGoal(goals[0]) : null,
+    renderFeed(v));
+}
+
 // ---------- Сборка ----------
 function renderMain(v, ui) {
+  if (MOBILE_MQ.matches) return renderMobile(v, ui);
   const goals = v.activeGoals;
   const right = h('aside', { class: 'col-right', 'aria-label': 'Цель и события' },
     goals.length > 1 ? renderGoalCards(goals, ui) : goals.length === 1 ? renderSingleGoal(goals[0]) : null,
@@ -500,4 +634,4 @@ function renderMain(v, ui) {
   return root;
 }
 
-window.VitrinaView = { renderMain, renderStatus, changesSummary };
+window.VitrinaView = { renderMain, renderStatus, changesSummary, MOBILE_MQ };

@@ -225,6 +225,7 @@ function showData(view) {
   check.hidden = view.checkCount === 0;
   check.textContent = `${view.checkCount} на проверку`;
   $('sub').textContent = view.firstTask ? `Виталий · система идёт с ${fmtDate(view.firstTask)}` : 'Виталий';
+  $('sub-m').textContent = `Обновлено ${updated}`;
   $('app-main').replaceChildren(window.VitrinaView.renderMain(view, ui));
   if (CHECK_MODE) renderReport(view); else $('report').replaceChildren();
   $('screen-login').hidden = true;
@@ -421,12 +422,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chip = $('test-chip');
     chip.textContent = `Демо · ${demo}`;
     chip.hidden = false;
+    window.VitrinaView.MOBILE_MQ.addEventListener('change', () => render());
     render();
     return;
   }
   $('login').addEventListener('click', onLoginClick);
   $('refresh').addEventListener('click', onRefreshClick);
   $('logout').addEventListener('click', signOut);
+  // Телефон ↔ ноутбук: другая раскладка, перерисовать.
+  window.VitrinaView.MOBILE_MQ.addEventListener('change', () => render());
   const ok = await waitForGis();
   showLogin(ok ? '' : MSG.gisFailed);
 });
