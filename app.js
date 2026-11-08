@@ -1,4 +1,6 @@
 'use strict';
+// Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-09.2';
 
 // Не секретны: ID клиента OAuth и ID рабочей таблицы.
 const CLIENT_ID = '691644833271-fdg5938hbajg5vvbl0ajq9d37bdl8l94.apps.googleusercontent.com';
@@ -41,7 +43,31 @@ const MSG = {
   googleDown: 'Google не ответил. Попробуйте чуть позже.',
   gisFailed: 'Не удалось загрузить вход Google. Проверьте сеть и обновите страницу.',
   cancelled: 'Вход не завершён. Можно попробовать ещё раз.',
+  show: 'Данные прочитаны, но показать их не получилось. Обновите страницу; если повторится — пришлите текст ниже.',
+  stale: 'Страница обновилась на сервере, а браузер взял часть старых файлов. Обновите её, чтобы загрузить новую версию целиком.',
 };
+
+// Все файлы сборки одной версии? Иначе — смесь старого и нового из кэша.
+function buildMismatch() {
+  const meta = document.querySelector('meta[name="vitrina-build"]');
+  const want = meta && meta.content;
+  const got = window.VITRINA_BUILD || {};
+  const parts = ['data', 'app', 'view', 'demo'];
+  if (!want) return 'index.html без версии';
+  const bad = parts.filter((p) => got[p] !== want);
+  return bad.length ? `разные версии: ${bad.join(', ')}` : null;
+}
+
+// Сообщение на том экране, который сейчас виден. detail — технический хвост ошибки, без данных таблицы.
+function showMessage(text, detail) {
+  const onData = !$('screen-data').hidden;
+  const box = onData ? $('data-message') : $('message');
+  const other = onData ? $('message') : $('data-message');
+  other.textContent = '';
+  box.replaceChildren(text);
+  box.classList.add('is-error');
+  if (detail) box.append(h('span', { class: 'err-detail' }, detail));
+}
 
 class AppError extends Error {
   constructor(kind) { super(kind); this.kind = kind; }
@@ -211,6 +237,8 @@ function showLogin(message) {
   $('actions').hidden = true;
   $('screen-login').hidden = false;
   $('message').textContent = message || '';
+  $('data-message').textContent = '';
+  showReload(false);
   $('login').disabled = !auth.client;
 }
 
@@ -242,6 +270,7 @@ async function load() {
   updateChanges();
   render();
   const now = new Date();
+  $('data-message').classList.remove('is-error');
   $('data-message').textContent = `Прочитано из таблицы в ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
@@ -358,8 +387,16 @@ function renderReport(v) {
 }
 
 function handleError(err) {
-  const kind = err instanceof AppError ? err.kind : 'googleDown';
-  if (!(err instanceof AppError)) console.error(err && err.message);
+  // Ошибка разбора, расчёта или отрисовки: не про доступ, токен оставляем,
+  // текст — на видимом экране (раньше уходил на скрытый экран данных).
+  if (!(err instanceof AppError)) {
+    const stale = buildMismatch();
+    const detail = stale ? `Версия: ${stale}` : `${(err && err.name) || 'Error'}: ${(err && err.message) || ''}`.slice(0, 200);
+    showMessage(stale ? MSG.stale : MSG.show, detail);
+    showReload(true);
+    return;
+  }
+  const kind = err.kind;
   const text = MSG[kind] || MSG.googleDown;
   if (kind === 'noAccess' || kind === 'cancelled' || kind === 'gisFailed' || !auth.token) {
     // Нет действующего доступа — обратно к кнопке входа, данных не показываем.
@@ -367,10 +404,12 @@ function handleError(err) {
     auth.token = null;
     showLogin(text);
   } else {
-    // Сеть/Google временно — оставляем экран, пишем спокойно.
-    $('data-message').textContent = text;
+    // Сеть/Google временно — пишем спокойно на видимом экране.
+    showMessage(text);
   }
 }
+
+function showReload(on) { $('reload').hidden = !on; }
 
 async function onLoginClick() {
   $('login').disabled = true;
@@ -423,14 +462,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     chip.textContent = `Демо · ${demo}`;
     chip.hidden = false;
     window.VitrinaView.MOBILE_MQ.addEventListener('change', () => render());
-    render();
+    try { render(); } catch (e) { handleError(e); }
+    return;
+  }
+  $('reload').addEventListener('click', () => location.reload());
+  const stale = buildMismatch();
+  if (stale) {
+    // Смесь версий из кэша: не пускаем дальше, просим перезагрузить.
+    showLogin('');
+    showMessage(MSG.stale, `Версия: ${stale}`);
+    showReload(true);
+    $('login').hidden = true;
     return;
   }
   $('login').addEventListener('click', onLoginClick);
   $('refresh').addEventListener('click', onRefreshClick);
   $('logout').addEventListener('click', signOut);
   // Телефон ↔ ноутбук: другая раскладка, перерисовать.
-  window.VitrinaView.MOBILE_MQ.addEventListener('change', () => render());
+  window.VitrinaView.MOBILE_MQ.addEventListener('change', () => { try { render(); } catch (e) { handleError(e); } });
   const ok = await waitForGis();
   showLogin(ok ? '' : MSG.gisFailed);
 });

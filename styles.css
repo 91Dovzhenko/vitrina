@@ -416,3 +416,10 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
   .btn-quiet { padding: 7px 12px; font-size: 12px; }
   #data-message { text-align: left; padding: 0 4px; }
 }
+
+/* Спокойные ошибки */
+.err-detail { display: block; margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--muted); word-break: break-word; }
+.btn-outline { border: 1.5px solid var(--line); }
+.quiet-card { display: flex; flex-direction: column; gap: 8px; }
+#data-message.is-error { font-size: 14px; font-weight: 600; color: var(--text-2); text-align: left; background: var(--card); border-radius: 18px; padding: 14px 18px; }
+#message .err-detail { text-align: left; }

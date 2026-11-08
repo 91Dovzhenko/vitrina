@@ -1,10 +1,12 @@
 'use strict';
+// Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-09.2';
 // Слой данных: разбор листов и расчёты. Чистые функции, без DOM и без сети.
 
 const RANGES = {
   skills: 'Навыки!A1:H',
   tasks: 'Задачи!A1:O',
-  goals: 'Цели!A1:O',
+  goals: 'Цели!A1:P',
   steps: 'Ступени!A1:M',
   measures: 'Замеры!A1:D',
   curve: 'Кривая уровней!A1:C',
@@ -119,6 +121,7 @@ function parseAll(valueRanges) {
     id: 'goal_id', name: 'Название', metric: 'Метрика лестницы', unit: 'Ед.',
     current: 'Текущее значение', target: 'Целевое значение', criterion: 'Критерий достижения',
     status: 'Статус', progress: 'Прогресс %', avg3: 'Среднее за 3 мес', achieved: 'Достигнута по правилу',
+    rule: 'Как считаем',
   })
     .filter((g) => str(g.id))
     .map((g) => ({
@@ -126,6 +129,8 @@ function parseAll(valueRanges) {
       current: num(g.current), target: num(g.target), criterion: str(g.criterion),
       status: str(g.status).toLowerCase(), progress: pct(g.progress),
       avg3: str(g.avg3) === '' ? null : num(g.avg3), achieved: str(g.achieved).toLowerCase() === 'да',
+      // «Как считаем» (колонка P): «один раз» — по максимальному замеру, иначе — среднее за 3 мес.
+      rule: str(g.rule).toLowerCase(),
     }));
 
   const steps = rowsByHeader(byName.steps, {
@@ -342,12 +347,22 @@ function goalLadder(goal, steps, measures) {
   const own3 = measures.filter((m) => m.goalId === goal.id && m.month).sort((a, b) => a.month - b.month);
   const nMeasures = own3.length;
   const needs3 = !!current && current.rule.includes('3 мес') && nMeasures < 3;
+  // Факт цели по её правилу из листа «Цели».
+  const oneTime = goal.rule.includes('один раз');
+  let goalFact = null;
+  if (oneTime) goalFact = nMeasures ? Math.max(...own3.map((m) => m.value)) : null;
+  else if (nMeasures >= 3) goalFact = own3.slice(-3).reduce((a, m) => a + m.value, 0) / 3;
+  // Текущая ступень без «Факта по правилу» берёт факт цели.
+  const cur = current && current.fact == null && goalFact != null ? { ...current, fact: goalFact } : current;
+  const steps2 = cur === current ? own : own.map((s) => (s === current ? cur : s));
   return {
     ...goal,
-    steps: own,
+    goalRule: oneTime ? 'один раз' : 'среднее за 3 мес',
+    goalFact,
+    steps: steps2,
     taken: own.filter((s) => s.taken),
-    current,
-    future: current ? own.filter((s) => !s.taken && s !== current) : [],
+    current: cur,
+    future: cur ? steps2.filter((s) => !s.taken && s !== cur) : [],
     stepN: current ? current.n : own.length,
     stepM: own.length,
     nMeasures,

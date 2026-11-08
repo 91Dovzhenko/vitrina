@@ -1,4 +1,6 @@
 'use strict';
+// Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-09.2';
 // Экран «обычный день» по design/Main.dc.html. Только показ, без правки данных.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -607,31 +609,42 @@ function renderMobileGoal(g) {
 
 function renderMobile(v, ui) {
   const branches = [v.focusBranch, ...v.branches.filter((b) => b !== v.focusBranch)].filter(Boolean);
-  const stats = renderStats(v);
-  const tiles = stats.querySelector('.tiles');
   const goals = v.activeGoals;
   return h('div', { class: 'm-layout' },
-    renderMobileHero(v),
-    branches.map((b) => renderMobileBranch(v, b, ui)),
-    renderMobileWeek(v),
-    tiles,
-    renderMobileGrow(v),
-    goals.length > 1 ? renderGoalCards(goals, ui) : goals.length === 1 ? renderMobileGoal(goals[0]) : null,
-    renderFeed(v));
+    safe('Уровень', () => renderMobileHero(v)),
+    branches.map((b) => safe(b, () => renderMobileBranch(v, b, ui))),
+    safe('Эта неделя', () => renderMobileWeek(v)),
+    safe('Итоги месяца', () => renderStats(v).querySelector('.tiles')),
+    safe('Растущий навык недели', () => renderMobileGrow(v)),
+    goals.length ? safe('Цели', () => (goals.length > 1 ? renderGoalCards(goals, ui) : renderMobileGoal(goals[0]))) : null,
+    safe('Последние события', () => renderFeed(v)));
 }
 
 // ---------- Сборка ----------
+// Один сломанный блок не должен ронять весь экран: вместо него — спокойная карточка.
+const blockErrors = [];
+function safe(title, fn) {
+  try { return fn(); } catch (e) {
+    blockErrors.push(`${title}: ${(e && e.message) || e}`);
+    return h('section', { class: 'card quiet-card' },
+      h('h2', { class: 'h-card' }, title),
+      h('span', { class: 'meta-13' }, 'Этот блок не удалось показать. Остальное на экране — верно.'),
+      h('span', { class: 'err-detail' }, `${(e && e.name) || 'Error'}: ${(e && e.message) || ''}`.slice(0, 160)));
+  }
+}
+
 function renderMain(v, ui) {
+  blockErrors.length = 0;
   if (MOBILE_MQ.matches) return renderMobile(v, ui);
   const goals = v.activeGoals;
   const right = h('aside', { class: 'col-right', 'aria-label': 'Цель и события' },
-    goals.length > 1 ? renderGoalCards(goals, ui) : goals.length === 1 ? renderSingleGoal(goals[0]) : null,
-    renderFeed(v));
-  const tree = renderTree(v, ui);
-  const root = h('div', { class: 'layout' }, renderStats(v), tree, right);
+    goals.length ? safe('Цели', () => (goals.length > 1 ? renderGoalCards(goals, ui) : renderSingleGoal(goals[0]))) : null,
+    safe('Последние события', () => renderFeed(v)));
+  const tree = safe('Дерево навыков', () => renderTree(v, ui));
+  const root = h('div', { class: 'layout' }, safe('Статистика', () => renderStats(v)), tree, right);
   const fit = tree.querySelector('.tree-fit');
-  treeFitObserver.observe(fit);
+  if (fit) treeFitObserver.observe(fit);
   return root;
 }
 
-window.VitrinaView = { renderMain, renderStatus, changesSummary, MOBILE_MQ };
+window.VitrinaView = { blockErrors, renderMain, renderStatus, changesSummary, MOBILE_MQ };
