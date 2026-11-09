@@ -1,11 +1,12 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-09.3';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-09.4';
 
 // Не секретны: ID клиента OAuth и ID рабочей таблицы.
 const CLIENT_ID = '691644833271-fdg5938hbajg5vvbl0ajq9d37bdl8l94.apps.googleusercontent.com';
 const SHEET_ID = '1jnd_dLwVKeCmVtFPlNCCBnxtE29wPWGz3NbwIwd8Br8';
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+// email — только чтобы запомнить, каким аккаунтом входили (подсказка login_hint).
+const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly email';
 const API = 'https://sheets.googleapis.com/v4/spreadsheets/';
 
 // ?sheet=<ID> — читать тестовую таблицу вместо рабочей. Не запоминается.
@@ -30,8 +31,25 @@ const store = {
   },
 };
 
-// Токен живёт только в памяти страницы.
-const auth = { token: null, expiresAt: 0, client: null, pending: null };
+// Токен — в памяти страницы и в localStorage (vitrina.auth), чтобы не входить
+// после каждой перезагрузки. Запись живёт до «Выйти» или отказа Google; токен
+// сам истекает через ~1 ч, тогда хватает одного клика «Продолжить».
+const auth = { token: null, expiresAt: 0, hint: null, client: null, pending: null };
+
+// Общий ключ для всех таблиц (не через store.key). В приватном режиме — только память.
+const AUTH_KEY = 'vitrina.auth';
+const savedAuth = {
+  read() {
+    try {
+      const v = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+      return v && typeof v.token === 'string' && v.token ? v : null;
+    } catch { return null; }
+  },
+  write() {
+    try { localStorage.setItem(AUTH_KEY, JSON.stringify({ token: auth.token, expiresAt: auth.expiresAt, hint: auth.hint })); } catch { /* приватный режим */ }
+  },
+  clear() { try { localStorage.removeItem(AUTH_KEY); } catch { /* приватный режим */ } },
+};
 
 const $ = (id) => document.getElementById(id);
 const D = window.VitrinaData;
@@ -43,6 +61,7 @@ const MSG = {
   googleDown: 'Google не ответил. Попробуйте чуть позже.',
   gisFailed: 'Не удалось загрузить вход Google. Проверьте сеть и обновите страницу.',
   cancelled: 'Вход не завершён. Можно попробовать ещё раз.',
+  rejected: 'Google больше не принимает прошлый вход. Войдите ещё раз.',
   show: 'Данные прочитаны, но показать их не получилось. Обновите страницу; если повторится — пришлите текст ниже.',
   stale: 'Страница обновилась на сервере, а браузер взял часть старых файлов. Обновите её, чтобы загрузить новую версию целиком.',
 };
@@ -94,7 +113,22 @@ function onToken(resp) {
   }
   auth.token = resp.access_token;
   auth.expiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000 - 60_000;
+  savedAuth.write();
   p && p.resolve(auth.token);
+  fetchHint(auth.token);
+}
+
+// Какой аккаунт вошёл: email для login_hint. Не получилось — работаем без подсказки.
+async function fetchHint(token) {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return;
+    const info = await res.json();
+    if (info && typeof info.email === 'string' && token === auth.token) {
+      auth.hint = info.email;
+      savedAuth.write();
+    }
+  } catch { /* без подсказки */ }
 }
 
 function onTokenError() {
@@ -103,18 +137,23 @@ function onTokenError() {
   p && p.reject(new AppError('cancelled'));
 }
 
-// prompt: '' — тихий запрос (без окна, если доступ уже выдан).
+// prompt: '' — тихий запрос (без выбора аккаунта, если доступ уже выдан);
+// 'select_account' — выбор аккаунта. Вызывать только из клика: иначе браузер блокирует окно.
 function requestToken(prompt) {
   return new Promise((resolve, reject) => {
     if (!auth.client) { reject(new AppError('gisFailed')); return; }
     auth.pending = { resolve, reject };
-    auth.client.requestAccessToken({ prompt });
+    const opts = { prompt };
+    if (prompt !== 'select_account' && auth.hint) opts.login_hint = auth.hint;
+    auth.client.requestAccessToken(opts);
   });
 }
 
-async function getToken() {
+// interactive = false — без клика пользователя (открытие страницы): окно не открываем.
+async function getToken(interactive = true) {
   if (auth.token && Date.now() < auth.expiresAt) return auth.token;
   auth.token = null;
+  if (!interactive) throw new AppError('expired');
   return requestToken('');
 }
 
@@ -122,6 +161,8 @@ function signOut() {
   const t = auth.token;
   auth.token = null;
   auth.expiresAt = 0;
+  auth.hint = null;
+  savedAuth.clear();
   state.view = null;
   state.data = null;
   state.changes = null;
@@ -134,8 +175,8 @@ function signOut() {
 }
 
 // ---------- Чтение таблицы ----------
-async function sheetsBatchGet(ranges, retried = false) {
-  const token = await getToken();
+async function sheetsBatchGet(ranges, interactive = true, retried = false) {
+  const token = await getToken(interactive);
   const qs = new URLSearchParams({
     valueRenderOption: 'UNFORMATTED_VALUE',
     dateTimeRenderOption: 'SERIAL_NUMBER',
@@ -151,11 +192,14 @@ async function sheetsBatchGet(ranges, retried = false) {
     throw new AppError(navigator.onLine === false ? 'noNetwork' : 'googleDown');
   }
 
-  if (res.status === 401 && !retried) {
+  if (res.status === 401) {
+    // Токен отвергнут: запись стираем. Без клика — к экрану входа, из клика — одна попытка заново.
     auth.token = null;
-    return sheetsBatchGet(ranges, true);
+    savedAuth.clear();
+    if (!interactive) throw new AppError('rejected');
+    if (!retried) return sheetsBatchGet(ranges, interactive, true);
+    throw new AppError('cancelled');
   }
-  if (res.status === 401) throw new AppError('cancelled');
   if (res.status === 403 || res.status === 404) throw new AppError('noAccess');
   if (!res.ok) throw new AppError('googleDown');
   return res.json();
@@ -232,6 +276,8 @@ function render(focusGoalId) {
   }
 }
 
+// Экран входа. Есть запись о прошлом входе (не выходил) — «Продолжить [как email]»
+// и ссылка «Другой аккаунт»; нет — обычное «Войти через Google» с выбором аккаунта.
 function showLogin(message) {
   $('screen-data').hidden = true;
   $('actions').hidden = true;
@@ -239,11 +285,19 @@ function showLogin(message) {
   $('message').textContent = message || '';
   $('data-message').textContent = '';
   showReload(false);
+  const saved = savedAuth.read();
+  if (saved && !auth.hint && saved.hint) auth.hint = saved.hint;
+  const cont = !!saved;
+  $('login').dataset.mode = cont ? 'continue' : 'select';
+  $('login').textContent = cont ? (auth.hint ? `Продолжить как ${auth.hint}` : 'Продолжить') : 'Войти через Google';
+  $('other-account').hidden = !cont;
   $('login').disabled = !auth.client;
+  $('other-account').disabled = !auth.client;
 }
 
 function showData(view) {
   state.view = view;
+  $('message').textContent = '';
   const updated = state.demo
     ? `${fmtDate(view.now)}, ${view.now.getHours()}:${String(view.now.getMinutes()).padStart(2, '0')}`
     : fmtCell(view.lastUpdate);
@@ -263,9 +317,9 @@ function showData(view) {
   $('logout').hidden = !!state.demo;
 }
 
-async function load() {
+async function load(interactive = true) {
   const keys = Object.keys(D.RANGES);
-  const res = await sheetsBatchGet(keys.map((k) => D.RANGES[k]));
+  const res = await sheetsBatchGet(keys.map((k) => D.RANGES[k]), interactive);
   state.data = D.parseAll(res.valueRanges || []);
   updateChanges();
   render();
@@ -398,9 +452,18 @@ function handleError(err) {
   }
   const kind = err.kind;
   const text = MSG[kind] || MSG.googleDown;
-  if (kind === 'noAccess' || kind === 'cancelled' || kind === 'gisFailed' || !auth.token) {
+  if (kind === 'expired') {
+    // Токен истёк, а страница открыта без клика: окно не открываем, ждём «Продолжить».
+    showLogin('');
+    return;
+  }
+  if (kind === 'noAccess' || kind === 'cancelled' || kind === 'gisFailed' || kind === 'rejected' || !auth.token) {
     // Нет действующего доступа — обратно к кнопке входа, данных не показываем.
-    if (kind === 'noAccess' && auth.token && window.google) google.accounts.oauth2.revoke(auth.token, () => {});
+    if (kind === 'noAccess') {
+      if (auth.token && window.google) google.accounts.oauth2.revoke(auth.token, () => {});
+      savedAuth.clear();
+      auth.hint = null;
+    }
     auth.token = null;
     showLogin(text);
   } else {
@@ -411,17 +474,25 @@ function handleError(err) {
 
 function showReload(on) { $('reload').hidden = !on; }
 
-async function onLoginClick() {
+// Клик по «Войти» / «Продолжить» / «Другой аккаунт». Окно Google открывается только отсюда.
+async function signIn(prompt) {
   $('login').disabled = true;
+  $('other-account').disabled = true;
   $('message').textContent = '';
   try {
-    await requestToken('select_account');
+    await requestToken(prompt);
     await load();
   } catch (e) {
     handleError(e);
   } finally {
     $('login').disabled = !auth.client;
+    $('other-account').disabled = !auth.client;
   }
+}
+
+function onLoginClick() {
+  // «Продолжить»: без выбора аккаунта и без повторного согласия (prompt '' + login_hint).
+  signIn($('login').dataset.mode === 'continue' ? '' : 'select_account');
 }
 
 async function onRefreshClick() {
@@ -476,10 +547,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
   $('login').addEventListener('click', onLoginClick);
+  $('other-account').addEventListener('click', () => {
+    auth.hint = null;
+    signIn('select_account');
+  });
   $('refresh').addEventListener('click', onRefreshClick);
   $('logout').addEventListener('click', signOut);
   // Телефон ↔ ноутбук: другая раскладка, перерисовать.
   window.VitrinaView.MOBILE_MQ.addEventListener('change', () => { try { render(); } catch (e) { handleError(e); } });
   const ok = await waitForGis();
-  showLogin(ok ? '' : MSG.gisFailed);
+  if (!ok) { showLogin(MSG.gisFailed); return; }
+  await resume();
 });
+
+// Открытие страницы: прошлый вход ещё действует — сразу данные, без экрана входа.
+async function resume() {
+  const saved = savedAuth.read();
+  if (saved) auth.hint = saved.hint || null;
+  if (saved && Date.now() < Number(saved.expiresAt)) {
+    auth.token = saved.token;
+    auth.expiresAt = Number(saved.expiresAt);
+    $('login').disabled = true;
+    $('other-account').hidden = true;
+    $('message').textContent = 'Загружаю данные…';
+    try { await load(false); } catch (e) { handleError(e); }
+    return;
+  }
+  showLogin('');
+}
