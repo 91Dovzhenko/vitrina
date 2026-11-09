@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-09.4';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-10.1';
 
 // Не секретны: ID клиента OAuth и ID рабочей таблицы.
 const CLIENT_ID = '691644833271-fdg5938hbajg5vvbl0ajq9d37bdl8l94.apps.googleusercontent.com';
@@ -201,6 +201,8 @@ async function sheetsBatchGet(ranges, interactive = true, retried = false) {
     throw new AppError('cancelled');
   }
   if (res.status === 403 || res.status === 404) throw new AppError('noAccess');
+  // 400 — диапазон не разобран: обычно нет листа («План», «Проекты»).
+  if (res.status === 400) throw new AppError('badRange');
   if (!res.ok) throw new AppError('googleDown');
   return res.json();
 }
@@ -256,6 +258,14 @@ const ui = {
   toggleGoal(id) {
     store.set('openGoal', this.openGoal === id ? null : id);
     render(id);
+  },
+  // План: раскрытая область (одна за раз), помним в браузере.
+  get openArea() { return store.get('planArea'); },
+  toggleArea(name) {
+    store.set('planArea', this.openArea === name ? null : name);
+    render();
+    const btn = [...document.querySelectorAll('.plan-area-btn')].find((b) => b.querySelector('.plan-area-name').textContent === name);
+    if (btn) btn.focus();
   },
   setFocus(branch) {
     store.set('focus', branch);
@@ -319,8 +329,25 @@ function showData(view) {
 
 async function load(interactive = true) {
   const keys = Object.keys(D.RANGES);
-  const res = await sheetsBatchGet(keys.map((k) => D.RANGES[k]), interactive);
-  state.data = D.parseAll(res.valueRanges || []);
+  // Необязательные листы могут отсутствовать: Google тогда отклоняет весь запрос (400).
+  // Пробуем по очереди без «Плана», без «Проектов», без обоих; пропущенные — «missing».
+  const opt = keys.filter((k) => D.OPTIONAL.has(k));
+  const tries = [[], ['plan'], ['projects'], opt];
+  let res = null, skip = [];
+  for (const t of tries) {
+    try {
+      res = await sheetsBatchGet(keys.filter((k) => !t.includes(k)).map((k) => D.RANGES[k]), interactive);
+      skip = t;
+      break;
+    } catch (e) {
+      if (!(e instanceof AppError && e.kind === 'badRange')) throw e;
+    }
+  }
+  if (!res) throw new AppError('googleDown');
+  const got = res.valueRanges || [];
+  let j = 0;
+  const aligned = keys.map((k) => (skip.includes(k) ? { missing: true } : got[j++]));
+  state.data = D.parseAll(aligned);
   updateChanges();
   render();
   const now = new Date();
@@ -437,6 +464,19 @@ function renderReport(v) {
     section('Итоги', table(['Показатель', 'Значение'], totals)),
     section('Цели', goals.length ? goals : h('p', { class: 'meta' }, 'Активных целей нет')),
     section('Лента событий', feed.length ? table(['День', 'Событие'], feed) : h('p', { class: 'meta' }, 'Событий пока нет')),
+    section('Сайд-квесты (лист «Проекты», только «Квест» = TRUE)', (v.quests || []).length
+      ? table(['Квест', 'Навык', 'Статус', 'Часы квеста', 'Оценка', 'На витрине', 'Прогресс', 'Закрыт'],
+        v.quests.map((q) => [q.name, q.skill, q.status, fmtH(q.hours), q.est == null ? '—' : fmtH(q.est),
+          q.status === 'incomplete' ? (q.est > 0 ? `${fmtNum(q.hours)} из ${fmtNum(q.est)} ч` : fmtH(q.hours)) : '—',
+          q.est > 0 ? fmtPct((q.hours / q.est) * 100) : '—', q.closedAt ? fmtDate(q.closedAt) : '—']))
+      : h('p', { class: 'meta' }, 'Квестов нет')),
+    section('План на сегодня (лист «План»)', !v.plan || v.plan.missing ? h('p', { class: 'meta' }, 'Листа нет или он пуст')
+      : [h('p', { class: 'meta' }, `Срез: ${v.plan.cut ? v.plan.cut.toLocaleString('ru-RU') : '—'} → «${v.planFresh.label}»`),
+        table(['Область / проект', 'Запланировано', 'Выполнено', 'Задач', 'Выполнено задач'],
+          v.plan.areas.flatMap((a) => [[a.name, fmtH(a.planned), fmtH(a.done), String(a.tasks), String(a.doneTasks)],
+            ...a.projects.map((pr) => [`  · ${pr.project}`, fmtH(pr.planned), fmtH(pr.done), String(pr.tasks), String(pr.doneTasks)])])
+            .concat([['Итого', fmtH(v.plan.planned), fmtH(v.plan.done), String(v.plan.tasks), String(v.plan.doneTasks)],
+              ['Осталось / без оценки', fmtH(Math.max(0, v.plan.planned - v.plan.done)), '', `без оценки: ${v.plan.noEst}`, '']]))]),
   );
 }
 

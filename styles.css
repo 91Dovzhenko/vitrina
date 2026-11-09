@@ -429,3 +429,88 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 .link-btn:focus-visible { outline: 3px solid var(--accent-dark); outline-offset: 2px; border-radius: 4px; }
 .link-btn[hidden] { display: none; }
 #login { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ================= Сайд-квесты и план на сегодня (Spec, раздел 8) ================= */
+.col-mid { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 1199px) { .col-mid { grid-column: 1 / -1; order: -1; } .tree { order: 0; grid-column: auto; } }
+.nowrap { white-space: nowrap; }
+.rel0 { position: relative; }
+.num-20 { font-family: Unbounded, Manrope, sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+
+/* План */
+.plan { display: flex; flex-direction: column; gap: 16px; }
+.plan-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.plan-stamp { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.plan-stamp.is-stale { font-weight: 700; color: var(--text); background: var(--chip); border-radius: 999px; padding: 4px 10px; }
+.plan-top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.plan-num { display: flex; flex-direction: column; gap: 4px; }
+.plan-num-row { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.plan-u { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 4px; }
+.plan-areas { display: flex; flex-direction: column; }
+.plan-area { border-top: 1px solid #F0F1EC; }
+.plan-area-btn { width: 100%; border: 0; background: transparent; padding: 10px 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 6px; border-radius: 8px; }
+.plan-area-btn:focus-visible { outline: 3px solid var(--accent-dark); outline-offset: 2px; }
+.plan-area-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.plan-chev { display: flex; flex-shrink: 0; transform: rotate(-90deg); transition: transform .15s; }
+.is-open .plan-chev { transform: rotate(0deg); }
+.plan-area-name { flex: 1; font-size: 14px; font-weight: 700; }
+.plan-area-h { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.plan-area-sub { display: flex; align-items: center; gap: 8px; width: 100%; padding-left: 22px; }
+.bar-4, .bar-3 { flex: 1; display: block; border-radius: 2px; background: #EEF0EA; overflow: hidden; }
+.bar-4 { height: 4px; } .bar-3 { height: 3px; }
+.bar-4 > span, .bar-3 > span { display: block; height: 100%; border-radius: 2px; background: var(--accent-dark); }
+.plan-projects { display: flex; flex-direction: column; gap: 10px; padding: 0 0 12px 22px; }
+.plan-project { display: flex; flex-direction: column; gap: 5px; }
+.plan-project-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.plan-project-name { font-weight: 600; color: var(--text-2); }
+.plan-project-row b { font-weight: 700; white-space: nowrap; }
+.plan-noest { border-top: 1px solid #F0F1EC; padding-top: 12px; }
+.plan-quiet { background: var(--card-quiet); border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.plan-quiet .meta-13 { line-height: 1.45; }
+
+/* Квесты */
+.quests { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
+.q-head { display: flex; align-items: center; gap: 8px; }
+.q-meta { margin-left: auto; }
+.q-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.q-card { background: var(--card-quiet); border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.q-skill { display: flex; align-items: center; gap: 8px; }
+.q-skill-icon { width: 28px; height: 28px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.q-skill-name { font-size: 12px; font-weight: 700; color: var(--muted); }
+.q-title { font-size: 15px; font-weight: 800; line-height: 1.3; min-height: 40px; }
+.q-bar { height: 6px; border-radius: 3px; background: #E6E8E2; overflow: hidden; }
+.q-bar > div { height: 6px; border-radius: 3px; background: var(--accent-dark); }
+.q-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.q-label { font-size: 13px; font-weight: 700; }
+.q-card.is-done { position: relative; overflow: hidden; background: var(--text); color: #fff; box-shadow: 0 12px 28px rgba(21, 23, 26, 0.18); }
+.q-sparkles { position: absolute; right: 6px; top: 4px; }
+.q-cup { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 0 0 4px rgba(197, 242, 90, 0.18); }
+.q-done-word { font-size: 12px; font-weight: 800; color: var(--accent); }
+.q-to { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.q-done-meta { font-size: 12px; color: #B4B8B0; font-weight: 600; }
+.q-empty { border-radius: 20px; padding: 18px 20px; gap: 4px; }
+@media (max-width: 1199px) and (min-width: 768px) { .q-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* Метка квеста на узле и строки в подсказке */
+.quest-flag { position: absolute; left: -6px; top: -6px; width: 24px; height: 24px; border-radius: 50%; background: var(--text); border: 2px solid #fff; display: flex; align-items: center; justify-content: center; z-index: 1; }
+.tip-quests { border-top: 1px solid #2E3130; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.tip-quest { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; font-weight: 600; line-height: 1.35; }
+.tip-quest svg { flex-shrink: 0; margin-top: 2px; }
+
+/* Лента: кубок квеста всегда лаймовый */
+.ev.is-quest .ev-icon { background: var(--accent); }
+
+/* Телефон */
+.m-layout .plan { padding: 20px; gap: 14px; }
+.m-quest-line { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; font-weight: 700; color: var(--text-2); line-height: 1.35; }
+.m-quest-line svg { flex-shrink: 0; margin-top: 2px; }
+.m-quests { padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+.q-head.m { margin-bottom: 6px; }
+.m-q { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid #F0F1EC; }
+.q-head + .m-q, .q-head + .quiet { border-top: 0; }
+.m-q-row { display: flex; align-items: center; gap: 12px; }
+.m-q-icon { width: 36px; height: 36px; border-radius: 50%; background: var(--chip); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.m-q.is-done .m-q-icon { background: var(--accent); }
+.m-q-title { font-size: 15px; font-weight: 800; line-height: 1.3; }
+.m-q .bar-6 > div { background: var(--accent-dark); }
+.m-q-over { padding-top: 8px; }

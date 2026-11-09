@@ -1,11 +1,16 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-09.4';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-10.1';
 // ?demo=normal|changes|levelup|goal|empty|goals — данные-примеры из design/Main.dc.html.
 // Не из таблицы: работают без входа и только для проверки состояний.
 
 (function () {
-  const VARIANTS = ['normal', 'changes', 'levelup', 'goal', 'empty', 'goals'];
+  const VARIANTS = ['normal', 'changes', 'levelup', 'goal', 'empty', 'goals',
+    // Сайд-квесты и план на сегодня (холст, ряд QP_*).
+    'questdone', 'noquests', 'manyquests', 'planmorning', 'planstale', 'planold', 'planempty'];
+  const QP = new Set(VARIANTS.slice(6));
+  // Состояния QP_* построены на «обычном дне».
+  const baseOf = (v) => (QP.has(v) ? 'normal' : v);
 
   // Кривая уровней по правилу системы: база 3 ч, рост √N.
   function curve() {
@@ -39,6 +44,11 @@
   }
 
   function nowFor(v) {
+    // План: время «сейчас» подобрано под подписи среза на макетах.
+    if (v === 'planmorning') return new Date(2026, 10, 5, 8, 50);
+    if (v === 'planstale') return new Date(2026, 10, 5, 14, 10);
+    if (v === 'planempty') return new Date(2026, 10, 5, 9, 20);
+    if (QP.has(v)) return new Date(2026, 10, 5, 14, 30);
     if (v === 'empty') return new Date(2026, 10, 1, 10, 0);
     if (v === 'changes' || v === 'levelup' || v === 'goal') return new Date(2026, 10, 7, 21, 10);
     return new Date(2026, 10, 5, 15, 30);
@@ -78,12 +88,60 @@
       steps = steps.concat(yt, third);
     }
     return {
-      goals: goals.map((g) => ({ metric: '', unit: '', current: 0, target: 0, progress: 0, avg3: null, achieved: false, ...g })),
+      goals: goals.map((g) => ({ metric: '', unit: '', current: 0, target: 0, progress: 0, avg3: null, achieved: false, rule: 'среднее за 3 мес', ...g })),
       steps, measures,
     };
   }
 
-  function data(v) {
+  // Сайд-квесты — пример с макета (не из таблицы).
+  function questsFor(v) {
+    if (v === 'noquests' || v === 'empty') return [];
+    const q = (id, name, skill, hours, est, extra) => ({ id, name, skill, hours, est, status: 'incomplete', closedAt: null, ...extra });
+    const list = [
+      q('DQ1', 'Библия стендапа', 'Сценарий', 4.5, 12),
+      q('DQ2', 'Курс по обложкам', 'Упаковка', 2, 6),
+      q('DQ3', '10 разборов заголовков', 'Упаковка', 3.5, 3),
+    ];
+    if (v === 'questdone') list[0] = { ...list[0], hours: 11, status: 'completed', closedAt: d(5) };
+    if (v === 'manyquests') list.push(q('DQ4', 'Подборка разборов монтажа', 'Монтаж', 1.5, null));
+    return list;
+  }
+
+  // План — пример с макета; названия проектов обобщены (реальные проекты в код не кладём).
+  function planFor(v) {
+    const now = nowFor(v);
+    const at = (dd, hh, mm) => new Date(2026, 10, dd, hh, mm);
+    const cut = v === 'planmorning' ? at(5, 8, 40) : v === 'planstale' ? at(5, 11, 5)
+      : v === 'planold' ? at(4, 23, 40) : v === 'planempty' ? at(5, 9, 15)
+      : QP.has(v) ? at(5, 14, 20) : new Date(now.getTime() - 10 * 60000);
+    if (v === 'planempty') {
+      return { missing: false, cut, day: now, areas: [], empty: true, planned: 0, done: 0, tasks: 0, doneTasks: 0, noEst: 0 };
+    }
+    const morning = v === 'planmorning';
+    const P = (area, project, tasks, planned, doneTasks, done, noEst = 0) => ({
+      area, project, tasks, planned, doneTasks: morning ? 0 : doneTasks, done: morning ? 0 : done, noEst: morning ? noEst : 0,
+    });
+    const items = [
+      P('Проекты', 'Финансовая модель', 1, 2, 1, 2),
+      P('Проекты', 'Клиент', 1, 0.75, 0, 0),
+      P('Проекты', 'Сайт', 1, 0.25, 0, 0),
+      P('Личное', 'Личное', 7, 2.75, 1, 0.5, 1),
+      P('Личное', 'Система продуктивности', 1, 1.5, 0, 0),
+      P('Блог', 'Блог: общее', 2, 0.75, 0, 0, 1),
+      P('Обучение', 'Чтение', 1, 0.5, 0, 0),
+    ];
+    const areas = [];
+    for (const it of items) {
+      let a = areas.find((x) => x.name === it.area);
+      if (!a) { a = { name: it.area, planned: 0, done: 0, tasks: 0, doneTasks: 0, projects: [] }; areas.push(a); }
+      a.planned += it.planned; a.done += it.done; a.tasks += it.tasks; a.doneTasks += it.doneTasks; a.projects.push(it);
+    }
+    const sum = (k) => items.reduce((x, it) => x + it[k], 0);
+    return { missing: false, cut, day: now, areas, empty: false, planned: sum('planned'), done: sum('done'), tasks: sum('tasks'), doneTasks: sum('doneTasks'), noEst: sum('noEst') };
+  }
+
+  function data(variant) {
+    const v = baseOf(variant);
     const c = curve();
     const tasks = tasksFor(v);
     const hours = new Map();
@@ -95,11 +153,15 @@
     });
     const g = goalsFor(v);
     const settings = new Map([['Ветка фокуса', 'Креатор']]);
-    return { skills, tasks, goals: g.goals, steps: g.steps, measures: g.measures, curve: c, settings };
+    return { skills, tasks, goals: g.goals, steps: g.steps, measures: g.measures, curve: c, settings, quests: questsFor(variant), plan: planFor(variant) };
   }
 
   // Изменения «с прошлого захода» — как на артбордах.
   function changes(v) {
+    if (v === 'questdone') {
+      return { first: false, any: true, hours: 0, bySkill: new Map(), branchUps: [], newSteps: [], doneQuests: [{ id: 'DQ1', name: 'Библия стендапа' }] };
+    }
+    v = baseOf(v);
     if (v === 'changes' || v === 'levelup') {
       return {
         first: false, any: true, hours: 4.5,

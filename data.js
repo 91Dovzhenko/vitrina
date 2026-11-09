@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-09.4';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-10.1';
 // Слой данных: разбор листов и расчёты. Чистые функции, без DOM и без сети.
 
 const RANGES = {
@@ -11,7 +11,11 @@ const RANGES = {
   measures: 'Замеры!A1:D',
   curve: 'Кривая уровней!A1:C',
   settings: 'Настройки!K1:L30',
+  projects: 'Проекты!A1:Z',
+  plan: 'План!A1:H',
 };
+// Листы, без которых витрина работает: нет листа — блок пишет спокойную строку.
+const OPTIONAL = new Set(['projects', 'plan']);
 
 // ---------- Общие помощники ----------
 const EPS = 1e-6;
@@ -93,8 +97,12 @@ function splitSkills(v) {
 // ---------- Разбор листов ----------
 function parseAll(valueRanges) {
   const byName = {};
+  const missing = new Set();
   const keys = Object.keys(RANGES);
-  keys.forEach((k, i) => { byName[k] = (valueRanges[i] && valueRanges[i].values) || []; });
+  keys.forEach((k, i) => {
+    byName[k] = (valueRanges[i] && valueRanges[i].values) || [];
+    if (valueRanges[i] && valueRanges[i].missing) missing.add(k);
+  });
 
   const skills = rowsByHeader(byName.skills, {
     name: 'Навык', branch: 'Ветка', active: 'Активен', hours: 'Опыт ч',
@@ -162,7 +170,88 @@ function parseAll(valueRanges) {
     if (k) settings.set(k, row[1]);
   }
 
-  return { skills, tasks, goals, steps, measures, curve, settings };
+  const quests = parseQuests(byName.projects, new Set(skills.map((x) => x.name)));
+  byName.projects = null; // остальные проекты не держим
+  const plan = parsePlan(byName.plan, missing.has('plan'));
+
+  return { skills, tasks, goals, steps, measures, curve, settings, quests, plan };
+}
+
+// ---------- Сайд-квесты (лист «Проекты», 09_ТЗ, раздел 3) ----------
+// Берём только строки с «Квест» = TRUE и навыком из листа «Навыки»; остальное отбрасываем сразу.
+function parseQuests(values, skillNames) {
+  return rowsByHeader(values, {
+    id: 'things_id', name: 'Название', status: 'Статус в Things', quest: 'Квест',
+    skill: 'Навык квеста', est: 'Оценка квеста ч', hours: 'Часы квеста', closed: 'Дата закрытия',
+  })
+    .filter((q) => bool(q.quest))
+    .map((q) => ({
+      id: str(q.id) || str(q.name), name: str(q.name), status: str(q.status).toLowerCase(),
+      skill: str(q.skill), est: str(q.est) === '' ? null : num(q.est), hours: num(q.hours),
+      closedAt: toDate(q.closed),
+    }))
+    .filter((q) => q.name && q.skill && skillNames.has(q.skill));
+}
+
+// ---------- План на сегодня (лист «План», 09_ТЗ, раздел 4) ----------
+function toInstant(v) {
+  if (typeof v === 'number' && v > 0) return serialToDate(v);
+  const s = str(v);
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? toDate(s) : d;
+}
+
+function parsePlan(values, missing) {
+  const rows = values || [];
+  if (missing || !rows.length) return { missing: true };
+  // Шапка: «Срез» и «Дата плана» по тексту в колонке A; таблица — от строки с «Область».
+  let cut = null, day = null, headAt = -1;
+  rows.forEach((r, i) => {
+    const k = normHeader(r && r[0]);
+    if (k === 'срез') cut = toInstant(r[1]);
+    else if (k === 'датаплана') day = toDate(r[1]) || toInstant(r[1]);
+    else if (k === 'область' && headAt < 0) headAt = i;
+  });
+  if (headAt < 0 && !cut) return { missing: true };
+  const items = headAt < 0 ? [] : rowsByHeader(rows.slice(headAt), {
+    area: 'Область', project: 'Проект', pid: 'project_id', tasks: 'Задач', doneTasks: 'Выполнено задач',
+    planned: 'Запланировано ч', done: 'Выполнено ч', noEst: 'Без оценки',
+  }).map((r) => ({
+    area: str(r.area) || '—', project: str(r.project) || str(r.area) || '—', pid: str(r.pid),
+    tasks: Math.round(num(r.tasks)), doneTasks: Math.round(num(r.doneTasks)),
+    planned: num(r.planned), done: num(r.done), noEst: Math.round(num(r.noEst)),
+  }));
+  // Области — в порядке первого появления в листе, проекты внутри — тоже.
+  const areas = [];
+  const byArea = new Map();
+  for (const it of items) {
+    let a = byArea.get(it.area);
+    if (!a) { a = { name: it.area, planned: 0, done: 0, tasks: 0, doneTasks: 0, projects: [] }; byArea.set(it.area, a); areas.push(a); }
+    a.planned += it.planned; a.done += it.done; a.tasks += it.tasks; a.doneTasks += it.doneTasks;
+    a.projects.push(it);
+  }
+  const sum = (k) => items.reduce((x, it) => x + it[k], 0);
+  return {
+    missing: false, cut, day, areas, empty: items.length === 0,
+    planned: sum('planned'), done: sum('done'), tasks: sum('tasks'), doneTasks: sum('doneTasks'), noEst: sum('noEst'),
+  };
+}
+
+// Свежесть среза от его возраста: fresh — серое время; stale — сегодня, старше часа; old — не сегодня.
+function planFreshness(cut, now) {
+  if (!cut) return { kind: 'fresh', label: 'план без времени среза' };
+  const hm = `${cut.getHours()}:${String(cut.getMinutes()).padStart(2, '0')}`;
+  const hm2 = hm.padStart(5, '0');
+  const age = now - cut;
+  const sameDay = dayKey(cut) === dayKey(now);
+  if (sameDay && age < 3600000) return { kind: 'fresh', label: `план на ${hm2}` };
+  if (sameDay) return { kind: 'stale', label: `план на ${hm2} · ${Math.floor(age / 3600000)} ч назад` };
+  const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (dayKey(cut) === dayKey(y)) return { kind: 'old', label: `план на вчера, ${hm2}` };
+  const MON = ['янв', 'февр', 'марта', 'апр', 'мая', 'июня', 'июля', 'авг', 'сент', 'окт', 'нояб', 'дек'];
+  const yr = cut.getFullYear() !== now.getFullYear() ? ` ${cut.getFullYear()}` : '';
+  return { kind: 'old', label: `план на ${cut.getDate()} ${MON[cut.getMonth()]}.${yr}, ${hm2}` };
 }
 
 // ---------- Расчёты (раздел 6 ТЗ) ----------
@@ -279,7 +368,18 @@ function compute(data, now = new Date(), focusOverride = null) {
   const growingSkill = weekRank.length ? { name: weekRank[0][0], hours: weekRank[0][1] } : null;
 
   // 8. Лента событий.
-  const feed = buildFeed(tasks, steps, curve, activeNames);
+  const quests = data.quests || [];
+  const feed = buildFeed(tasks, steps, curve, activeNames, quests);
+
+  // Сайд-квесты: активные — incomplete, в порядке листа; метки узлов по навыку.
+  const activeQuests = quests.filter((q) => q.status === 'incomplete');
+  const questsBySkill = new Map();
+  for (const q of activeQuests) {
+    if (!questsBySkill.has(q.skill)) questsBySkill.set(q.skill, []);
+    questsBySkill.get(q.skill).push(q);
+  }
+  const plan = data.plan || { missing: true };
+  const planFresh = plan.missing ? null : planFreshness(plan.cut, now);
 
   // 9. «Проверить».
   const checkCount = tasks.filter((t) => t.check).length;
@@ -297,10 +397,13 @@ function compute(data, now = new Date(), focusOverride = null) {
     firstTask,
     takenStepIds: steps.filter((s) => s.taken).map((s) => s.id),
     stepsById: new Map(steps.map((s) => [s.id, s])),
+    quests, activeQuests, questsBySkill,
+    completedQuests: quests.filter((q) => q.status === 'completed'),
+    plan, planFresh,
   };
 }
 
-function buildFeed(tasks, steps, curve, activeNames) {
+function buildFeed(tasks, steps, curve, activeNames, quests = []) {
   const events = [];
   const sorted = [...tasks].sort((a, b) => a.date - b.date);
 
@@ -331,6 +434,11 @@ function buildFeed(tasks, steps, curve, activeNames) {
     }
   }
 
+  // «Квест пройден: <название> → <навык>» — по дате закрытия проекта.
+  for (const q of quests) {
+    if (q.status === 'completed' && q.closedAt) events.push({ type: 'quest', date: q.closedAt, name: q.name, skill: q.skill, order: 3 });
+  }
+
   // «Взята ступень „…“».
   for (const s of steps) {
     if (s.taken && s.takenAt) events.push({ type: 'step', date: s.takenAt, name: s.name, goalId: s.goalId, order: 2 });
@@ -348,7 +456,7 @@ function goalLadder(goal, steps, measures) {
   const nMeasures = own3.length;
   const needs3 = !!current && current.rule.includes('3 мес') && nMeasures < 3;
   // Факт цели по её правилу из листа «Цели».
-  const oneTime = goal.rule.includes('один раз');
+  const oneTime = String(goal.rule || '').includes('один раз');
   let goalFact = null;
   if (oneTime) goalFact = nMeasures ? Math.max(...own3.map((m) => m.value)) : null;
   else if (nMeasures >= 3) goalFact = own3.slice(-3).reduce((a, m) => a + m.value, 0) / 3;
@@ -378,7 +486,7 @@ function makeSnapshot(v) {
   for (const s of v.skills) skills[s.name] = [Math.round(s.hours * 100) / 100, s.level];
   const branches = {};
   for (const b of v.branches) branches[b] = (v.overall[b] || {}).level || 1;
-  return { at: Date.now(), skills, branches, steps: [...v.takenStepIds] };
+  return { at: Date.now(), skills, branches, steps: [...v.takenStepIds], quests: (v.completedQuests || []).map((q) => q.id) };
 }
 
 function diffSnapshot(prev, v) {
@@ -401,8 +509,12 @@ function diffSnapshot(prev, v) {
     .map((b) => ({ branch: b, level: v.overall[b].level }));
   const had = new Set(prev.steps || []);
   const newSteps = v.takenStepIds.filter((id) => !had.has(id)).map((id) => v.stepsById.get(id)).filter(Boolean);
-  const any = bySkill.size > 0 || branchUps.length > 0 || newSteps.length > 0;
-  return { first: false, any, at: prev.at, hours, bySkill, branchUps, newSteps };
+  // Пройденный квест: закрыт в день прошлого захода или позже и ещё не был показан пройденным.
+  const seen = new Set(prev.quests || []);
+  const prevDay = prev.at ? dayKey(new Date(prev.at)) : '';
+  const doneQuests = (v.completedQuests || []).filter((q) => q.closedAt && dayKey(q.closedAt) >= prevDay && !seen.has(q.id));
+  const any = bySkill.size > 0 || branchUps.length > 0 || newSteps.length > 0 || doneQuests.length > 0;
+  return { first: false, any, at: prev.at, hours, bySkill, branchUps, newSteps, doneQuests };
 }
 
-window.VitrinaData = { RANGES, parseAll, compute, makeSnapshot, diffSnapshot, levelForHours, levelInfo, toDate, serialToDate, normHeader };
+window.VitrinaData = { RANGES, OPTIONAL, planFreshness, parseAll, compute, makeSnapshot, diffSnapshot, levelForHours, levelInfo, toDate, serialToDate, normHeader };
