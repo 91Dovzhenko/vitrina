@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-10.1';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-10.6';
 // ?demo=normal|changes|levelup|goal|empty|goals — данные-примеры из design/Main.dc.html.
 // Не из таблицы: работают без входа и только для проверки состояний.
 

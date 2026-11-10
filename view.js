@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.1';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.6';
 // Экран «обычный день» по design/Main.dc.html. Только показ, без правки данных.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -727,6 +727,45 @@ function hoursParts(x) {
 function hoursText(x) { return hoursParts(x).map((p) => p.n + NBSP + p.u).join(' '); }
 function tasksWord(k) { return plural(k, ['задача', 'задачи', 'задач']); }
 
+// Статус строки плана — только по часам (минутам): не начато / в процессе / сделано.
+function planStatus(done, planned) {
+  const dm = Math.round((Number(done) || 0) * 60);
+  const pm = Math.round((Number(planned) || 0) * 60);
+  const kind = pm > 0 && dm >= pm ? 'done' : dm > 0 ? 'going' : 'idle';
+  return { kind, pct: pm > 0 ? Math.min(1, dm / pm) : 0 };
+}
+const PLAN_SR = { idle: 'не начато', going: 'в процессе', done: 'сделано' };
+
+// Кружок-статус: 18 у области (r7), 14 у проекта (r5,5). Spec, раздел 8.
+function planDot(st, size) {
+  const big = size === 18;
+  const c = size / 2, r = big ? 7 : 5.5;
+  if (st.kind === 'done') {
+    return h('span', { class: 'plan-dot is-done', style: `width:${size}px;height:${size}px` },
+      s('svg', { width: big ? 11 : 9, height: big ? 11 : 9, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' },
+        s('path', { d: 'M5 12.5l4.5 4.5L19 7.5', stroke: '#FFFFFF', 'stroke-width': big ? 3.6 : 4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })),
+      h('span', { class: 'sr' }, PLAN_SR.done));
+  }
+  const svg = s('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}`, fill: 'none', 'aria-hidden': 'true', class: 'plan-dot' + (st.kind === 'going' ? ' is-going' : '') });
+  if (st.kind === 'idle') {
+    svg.append(s('circle', { cx: c, cy: c, r, stroke: '#C9CCC4', 'stroke-width': 1.5 }));
+  } else {
+    const C = 2 * Math.PI * r, w = big ? 3 : 2.5;
+    svg.append(
+      s('circle', { cx: c, cy: c, r, stroke: '#E6E8E2', 'stroke-width': w }),
+      s('circle', { cx: c, cy: c, r, stroke: ACCENT_D, 'stroke-width': w, 'stroke-dasharray': `${(C * st.pct).toFixed(1)} ${C.toFixed(1)}` }));
+  }
+  return h('span', { class: 'plan-dot-wrap' }, svg, h('span', { class: 'sr' }, PLAN_SR[st.kind]));
+}
+
+// Часы справа: не начато — только план; в процессе — «сделано / план»; сделано — план акцентом.
+function planHours(st, done, planned) {
+  if (st.kind === 'going') {
+    return h('span', { class: 'plan-h' }, h('b', {}, hoursText(done)), h('span', { class: 'plan-h-of' }, ` / ${hoursText(planned)}`));
+  }
+  return h('span', { class: 'plan-h' + (st.kind === 'done' ? ' is-done' : ' is-idle') }, hoursText(planned));
+}
+
 function renderPlan(v, ui) {
   const p = v.plan || { missing: true };
   const card = (...kids) => h('section', { class: 'card plan', 'aria-label': 'План на сегодня' }, ...kids);
@@ -754,20 +793,22 @@ function renderPlan(v, ui) {
   const areas = p.areas.map((a) => {
     const open = ui.openArea === a.name;
     const id = 'plan-area-' + p.areas.indexOf(a);
+    const st = planStatus(a.done, a.planned);
     const btn = h('button', { type: 'button', class: 'plan-area-btn', 'aria-expanded': String(open), 'aria-controls': id },
-      h('span', { class: 'plan-area-row' },
-        h('span', { class: 'plan-chev' }, icon(ICONS.chevron, 14, '#3E423C', 2.4)),
-        h('span', { class: 'plan-area-name' }, a.name),
-        h('span', { class: 'plan-area-h' }, hoursText(a.planned))),
-      h('span', { class: 'plan-area-sub' },
-        h('span', { class: 'bar-4' }, h('span', { style: `width:${pctOf(a.done, a.planned)}%` })),
-        h('span', { class: 'meta-12 nowrap' }, a.doneTasks > 0 ? `выполнено ${a.doneTasks} из ${a.tasks}` : `${a.tasks} ${tasksWord(a.tasks)}`)));
+      planDot(st, 18),
+      h('span', { class: 'plan-area-name' }, a.name),
+      planHours(st, a.done, a.planned),
+      h('span', { class: 'plan-chev' }, icon(ICONS.chevron, 12, '#8E9289', 2.4)));
     btn.addEventListener('click', () => ui.toggleArea(a.name));
     return h('div', { class: 'plan-area' + (open ? ' is-open' : '') }, btn,
       open && h('div', { class: 'plan-projects', id },
-        a.projects.map((pr) => h('div', { class: 'plan-project' },
-          h('span', { class: 'plan-project-row' }, h('span', { class: 'plan-project-name' }, pr.project), h('b', {}, hoursText(pr.planned))),
-          h('span', { class: 'bar-3' }, h('span', { style: `width:${pctOf(pr.done, pr.planned)}%` }))))));
+        a.projects.map((pr) => {
+          const ps = planStatus(pr.done, pr.planned);
+          return h('div', { class: 'plan-project' + (ps.kind === 'done' ? ' is-done' : '') },
+            planDot(ps, 14),
+            h('span', { class: 'plan-project-name' }, pr.project),
+            planHours(ps, pr.done, pr.planned));
+        })));
   });
   return card(head,
     h('div', { class: 'plan-top' }, top),

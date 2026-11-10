@@ -448,22 +448,7 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 .plan-u { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 4px; }
 .plan-areas { display: flex; flex-direction: column; }
 .plan-area { border-top: 1px solid #F0F1EC; }
-.plan-area-btn { width: 100%; border: 0; background: transparent; padding: 10px 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 6px; border-radius: 8px; }
 .plan-area-btn:focus-visible { outline: 3px solid var(--accent-dark); outline-offset: 2px; }
-.plan-area-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-.plan-chev { display: flex; flex-shrink: 0; transform: rotate(-90deg); transition: transform .15s; }
-.is-open .plan-chev { transform: rotate(0deg); }
-.plan-area-name { flex: 1; font-size: 14px; font-weight: 700; }
-.plan-area-h { font-size: 13px; font-weight: 700; white-space: nowrap; }
-.plan-area-sub { display: flex; align-items: center; gap: 8px; width: 100%; padding-left: 22px; }
-.bar-4, .bar-3 { flex: 1; display: block; border-radius: 2px; background: #EEF0EA; overflow: hidden; }
-.bar-4 { height: 4px; } .bar-3 { height: 3px; }
-.bar-4 > span, .bar-3 > span { display: block; height: 100%; border-radius: 2px; background: var(--accent-dark); }
-.plan-projects { display: flex; flex-direction: column; gap: 10px; padding: 0 0 12px 22px; }
-.plan-project { display: flex; flex-direction: column; gap: 5px; }
-.plan-project-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
-.plan-project-name { font-weight: 600; color: var(--text-2); }
-.plan-project-row b { font-weight: 700; white-space: nowrap; }
 .plan-noest { border-top: 1px solid #F0F1EC; padding-top: 12px; }
 .plan-quiet { background: var(--card-quiet); border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
 .plan-quiet .meta-13 { line-height: 1.45; }
@@ -514,3 +499,21 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 .m-q-title { font-size: 15px; font-weight: 800; line-height: 1.3; }
 .m-q .bar-6 > div { background: var(--accent-dark); }
 .m-q-over { padding-top: 8px; }
+
+/* План: строки области и проекта — кружок-статус и часы, без полос (Spec, раздел 8) */
+.plan-area-btn { width: 100%; border: 0; background: transparent; padding: 12px 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 8px; }
+.plan-area-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
+.plan-chev { display: flex; flex-shrink: 0; transform: rotate(-90deg); }
+.plan-dot-wrap { display: flex; flex-shrink: 0; }
+.plan-dot.is-going { transform: rotate(-90deg); }
+span.plan-dot.is-done { border-radius: 50%; background: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.plan-h { font-size: 13px; white-space: nowrap; }
+.plan-h b { font-weight: 800; }
+.plan-h-of { color: var(--muted); font-weight: 600; }
+.plan-h.is-idle { font-weight: 600; color: var(--text-2); }
+.plan-h.is-done { font-weight: 800; color: var(--accent-dark); }
+.plan-projects { display: flex; flex-direction: column; gap: 10px; padding: 0 22px 12px 28px; }
+.plan-project { display: flex; align-items: center; gap: 8px; }
+.plan-project .plan-project-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.plan-project.is-done .plan-project-name { font-weight: 700; color: var(--accent-dark); }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
