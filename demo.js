@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-10.10';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-10.22';
 // ?demo=normal|changes|levelup|goal|empty|goals — данные-примеры из design/Main.dc.html.
 // Не из таблицы: работают без входа и только для проверки состояний.
 
@@ -93,17 +93,25 @@
     };
   }
 
-  // Сайд-квесты — пример с макета (не из таблицы).
+  // Сайд-квесты — пример с макета (не из таблицы); названия обобщены.
+  // Навыки квеста в демо заданы сразу (skillsPreset), на живых данных — из «Задач» по project_id.
   function questsFor(v) {
     if (v === 'noquests' || v === 'empty') return [];
-    const q = (id, name, skill, hours, est, extra) => ({ id, name, skill, hours, est, status: 'incomplete', closedAt: null, ...extra });
+    const q = (id, name, est, skills, extra) => ({
+      id, name, est, status: 'incomplete', closedAt: null,
+      skillsPreset: skills.map(([n, hrs]) => ({ name: n, hours: hrs })),
+      hours: skills.reduce((x, [, hrs]) => x + hrs, 0), ...extra,
+    });
     const list = [
-      q('DQ1', 'Библия стендапа', 'Сценарий', 4.5, 12),
-      q('DQ2', 'Курс по обложкам', 'Упаковка', 2, 6),
-      q('DQ3', '10 разборов заголовков', 'Упаковка', 3.5, 3),
+      q('DQ1', 'Видео №12', 8, [['Сценарий', 3], ['Съёмка', 1.5], ['Монтаж', 1]]),
+      q('DQ2', 'Книга о стендапе', 12, [['Сценарий', 2.5]]),
+      q('DQ3', 'Курс по обложкам', 6, []),
     ];
-    if (v === 'questdone') list[0] = { ...list[0], hours: 11, status: 'completed', closedAt: d(5) };
-    if (v === 'manyquests') list.push(q('DQ4', 'Подборка разборов монтажа', 'Монтаж', 1.5, null));
+    if (v === 'questdone') list[0] = { ...list[0], status: 'completed', closedAt: d(5) };
+    if (v === 'manyquests') {
+      list.push(q('DQ4', '10 разборов заголовков', 3, [['Упаковка', 3.5]]));
+      list.push(q('DQ5', 'Подборка разборов монтажа', null, [['Монтаж', 1.5]]));
+    }
     return list;
   }
 
@@ -159,7 +167,7 @@
   // Изменения «с прошлого захода» — как на артбордах.
   function changes(v) {
     if (v === 'questdone') {
-      return { first: false, any: true, hours: 0, bySkill: new Map(), branchUps: [], newSteps: [], doneQuests: [{ id: 'DQ1', name: 'Библия стендапа' }] };
+      return { first: false, any: true, hours: 0, bySkill: new Map(), branchUps: [], newSteps: [], doneQuests: [{ id: 'DQ1', name: 'Видео №12' }] };
     }
     v = baseOf(v);
     if (v === 'changes' || v === 'levelup') {

@@ -452,9 +452,6 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 .q-meta { margin-left: auto; }
 .q-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .q-card { background: var(--card-quiet); border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.q-skill { display: flex; align-items: center; gap: 8px; }
-.q-skill-icon { width: 28px; height: 28px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.q-skill-name { font-size: 12px; font-weight: 700; color: var(--muted); }
 .q-title { font-size: 15px; font-weight: 800; line-height: 1.3; min-height: 40px; }
 .q-bar { height: 6px; border-radius: 3px; background: #E6E8E2; overflow: hidden; }
 .q-bar > div { height: 6px; border-radius: 3px; background: var(--accent-dark); }
@@ -464,7 +461,6 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 .q-sparkles { position: absolute; right: 6px; top: 4px; }
 .q-cup { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 0 0 4px rgba(197, 242, 90, 0.18); }
 .q-done-word { font-size: 12px; font-weight: 800; color: var(--accent); }
-.q-to { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
 .q-done-meta { font-size: 12px; color: #B4B8B0; font-weight: 600; }
 .q-empty { border-radius: 20px; padding: 18px 20px; gap: 4px; }
 @media (max-width: 1199px) and (min-width: 768px) { .q-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -486,10 +482,8 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 .q-head.m { margin-bottom: 6px; }
 .m-q { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid #F0F1EC; }
 .q-head + .m-q, .q-head + .quiet { border-top: 0; }
-.m-q-row { display: flex; align-items: center; gap: 12px; }
-.m-q-icon { width: 36px; height: 36px; border-radius: 50%; background: var(--chip); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.m-q.is-done .m-q-icon { background: var(--accent); }
-.m-q-title { font-size: 15px; font-weight: 800; line-height: 1.3; }
+.m-q-row { display: flex; align-items: flex-start; gap: 12px; }
+.m-q-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
 .m-q .bar-6 > div { background: var(--accent-dark); }
 .m-q-over { padding-top: 8px; }
 
@@ -540,3 +534,15 @@ span.plan-dot.is-done { border-radius: 50%; background: var(--accent-dark); disp
   .plan-project-name { font-size: 14px; line-height: 1.35; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
   .plan-project .plan-h { font-size: 14px; }
 }
+
+/* Сайд-квесты: чипы навыков из задач квеста (Spec, раздел 8, модель «квест — проект») */
+.q-chips { display: flex; flex-wrap: wrap; gap: 6px 5px; }
+.q-card .q-chips { min-height: 24px; }
+.q-chip { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px 0 6px; border-radius: 999px; background: #fff; font-size: 12px; font-weight: 700; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.q-chip.is-dark { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.q-chip.is-m { height: 26px; padding: 0 9px 0 7px; background: var(--chip); }
+.q-chip svg { flex-shrink: 0; }
+.q-done-head { display: flex; align-items: center; gap: 8px; }
+.q-label { font-variant-numeric: tabular-nums; }
+.m-q .q-label { line-height: 1.5; }
+.m-q-done { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--accent-dark); }

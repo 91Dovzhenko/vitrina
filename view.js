@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.10';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.22';
 // Экран «обычный день» по design/Main.dc.html. Только показ, без правки данных.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -307,7 +307,7 @@ function renderTree(v, ui) {
         h('div', { class: 'tip-row' }, h('span', {}, 'Всего часов'), h('b', {}, fmtH(n.total))),
         h('div', { class: 'tip-row' }, h('span', {}, n.open ? `До уровня ${n.level + 1}` : 'До первого уровня'), h('b', {}, fmtH(n.toNext))),
         !n.open && h('span', { class: 'tip-note' }, 'Откроется с первыми часами'),
-        nq.length && h('div', { class: 'tip-quests' }, nq.map((q) => h('span', { class: 'tip-quest' }, icon(ICONS.flag, 14, ACCENT, 2.2), questLine(q)))),
+        nq.length && h('div', { class: 'tip-quests' }, nq.map((e) => h('span', { class: 'tip-quest' }, icon(ICONS.flag, 14, ACCENT, 2.2), questLine(e)))),
       ].filter(Boolean));
       tip.style.left = left + 'px';
       tip.style.top = top + 'px';
@@ -448,7 +448,7 @@ function renderFeed(v) {
     let text, ic;
     if (e.type === 'hours') { text = `+${fmtH(e.hours)} ${vo(e.skill)} ${e.skill}`; ic = skillIcon(e.skill); }
     else if (e.type === 'level') { text = `${e.skill} → уровень ${e.level}`; ic = ICONS.up; }
-    else if (e.type === 'quest') { text = `Квест пройден: ${e.name} → ${e.skill}`; ic = ICONS.trophy; }
+    else if (e.type === 'quest') { text = `Квест пройден: ${e.name}`; ic = ICONS.trophy; }
     else { text = `Взята ступень «${e.name}»`; ic = ICONS.trophy; }
     const lu = e.type === 'level' && bySkill.get(e.skill);
     const hot = (lu && e.level > lu.fromLevel && e.level <= lu.toLevel) || (e.type === 'step' && newStepNames.has(e.name))
@@ -638,16 +638,30 @@ function renderMobile(v, ui) {
 }
 
 // ---------- Сайд-квесты (09_ТЗ, раздел 3; Spec, раздел 8) ----------
+// Квест — проект; навыки и часы по навыкам — из «Задач» (q.skills). Часы — ч:мм, как в плане.
 function questLabel(q) {
-  return q.est != null && q.est > 0 ? `${fmtNum(q.hours)} из ${fmtNum(q.est)}${NBSP}ч` : fmtH(q.hours);
+  if (q.est > 0) return q.hours > 1e-6 ? `${planClock(q.hours)} / ${planClock(q.est)}` : `оценка ${planClock(q.est)}`;
+  return planClock(q.hours);
 }
-function questLine(q) { return `Квест: ${q.name} · ${questLabel(q)}`; }
 function questPct(q) { return q.est > 0 ? Math.max(0, Math.min(100, (q.hours / q.est) * 100)) : 0; }
 function questOver(q) { return q.est > 0 && q.hours > q.est + 1e-6; }
 
+// Строка подсказки/телефона: часы именно этого навыка из квеста.
+function questLine(entry) { return `Квест: ${entry.quest.name} · ${planClock(entry.hours)}`; }
+
 function mQuestLines(v, skill) {
   const qs = (v.questsBySkill && v.questsBySkill.get(skill)) || [];
-  return qs.map((q) => h('span', { class: 'm-quest-line' }, icon(ICONS.flag, 12, ACCENT_D, 2.6), questLine(q)));
+  return qs.map((e) => h('span', { class: 'm-quest-line' }, icon(ICONS.flag, 12, ACCENT_D, 2.6), questLine(e)));
+}
+
+// До трёх чипов «иконка + часы» по убыванию часов; имя навыка — в title/aria, на телефоне — в тексте.
+function questChips(q, mode) {
+  return (q.skills || []).slice(0, 3).map((sk) => {
+    const clock = planClock(sk.hours);
+    return h('span', { class: 'q-chip' + (mode === 'dark' ? ' is-dark' : mode === 'mobile' ? ' is-m' : ''), title: `${sk.name} · ${clock}`, 'aria-label': `${sk.name}, ${clock}` },
+      icon(skillIcon(sk.name), 13, mode === 'dark' ? ACCENT : '#15171A', 2),
+      mode === 'mobile' ? `${sk.name} ${clock}` : clock);
+  });
 }
 
 // Порядок как в листе: активные и только что пройденные (до следующего захода).
@@ -663,28 +677,31 @@ function questsMeta(active, done) {
   return active > 3 ? `${active} активны` : `${active} из 3 ${active === 1 ? 'активен' : 'активны'}`;
 }
 
+function questsEmpty() {
+  return h('div', { class: 'quiet q-empty' }, h('span', { class: 'quiet-title' }, 'Активных квестов нет'),
+    h('span', { class: 'meta-13' }, 'Книги, курсы и подборки, которые качают навык, появятся здесь.'));
+}
+
+function doneMeta(q) { return `${planClock(q.hours)} вложено${q.closedAt ? ' · ' + fmtDate(q.closedAt) : ''}`; }
+
 function renderQuests(v) {
   const slots = questSlots(v);
   const active = slots.filter((q) => !q.done).length;
   const done = slots.length - active;
   const head = h('div', { class: 'q-head' }, h('h2', { class: 'h-card' }, 'Сайд-квесты'), h('span', { class: 'meta-12 q-meta' }, questsMeta(active, done)));
-  if (!slots.length) {
-    return h('section', { class: 'card quests', 'aria-label': 'Сайд-квесты' }, head,
-      h('div', { class: 'quiet q-empty' }, h('span', { class: 'quiet-title' }, 'Активных квестов нет'),
-        h('span', { class: 'meta-13' }, 'Книги, курсы и подборки, которые качают навык, появятся здесь.')));
-  }
+  if (!slots.length) return h('section', { class: 'card quests', 'aria-label': 'Сайд-квесты' }, head, questsEmpty());
   const cards = slots.map((q) => {
     if (q.done) {
       return h('div', { class: 'q-card is-done' },
         s('svg', { width: 90, height: 56, viewBox: '0 0 90 56', fill: 'none', 'aria-hidden': 'true', class: 'q-sparkles' },
           s('path', { d: 'M68 8l2 5l5 2l-5 2l-2 5l-2-5l-5-2l5-2z M48 30l1.4 3.6l3.6 1.4l-3.6 1.4l-1.4 3.6l-1.4-3.6l-3.6-1.4l3.6-1.4z M82 36l1 2.5l2.5 1l-2.5 1l-1 2.5l-1-2.5l-2.5-1l2.5-1z', fill: ACCENT, opacity: 0.8 })),
-        h('div', { class: 'q-skill rel0' }, h('span', { class: 'q-cup' }, icon(ICONS.trophy, 15, '#15171A', 2)), h('span', { class: 'q-done-word' }, 'Квест пройден')),
+        h('div', { class: 'q-done-head rel0' }, h('span', { class: 'q-cup' }, icon(ICONS.trophy, 15, '#15171A', 2)), h('span', { class: 'q-done-word' }, 'Квест пройден')),
         h('span', { class: 'q-title rel0' }, q.name),
-        h('div', { class: 'q-to' }, icon(skillIcon(q.skill), 14, ACCENT, 1.9), `→ ${q.skill}`),
-        h('span', { class: 'q-done-meta' }, `${fmtH(q.hours)} вложено${q.closedAt ? ' · ' + fmtDate(q.closedAt) : ''}`));
+        h('div', { class: 'q-chips rel0' }, questChips(q, 'dark')),
+        h('span', { class: 'q-done-meta' }, doneMeta(q)));
     }
     return h('div', { class: 'q-card' },
-      h('div', { class: 'q-skill' }, h('span', { class: 'q-skill-icon' }, icon(skillIcon(q.skill), 15, '#15171A')), h('span', { class: 'q-skill-name' }, q.skill)),
+      h('div', { class: 'q-chips' }, questChips(q, 'card')),
       h('span', { class: 'q-title' }, q.name),
       q.est > 0 && h('div', { class: 'q-bar' }, h('div', { style: `width:${questPct(q)}%` })),
       h('div', { class: 'q-foot' }, h('span', { class: 'q-label' }, questLabel(q)), questOver(q) && h('span', { class: 'meta-12' }, 'часов больше оценки')));
@@ -698,19 +715,18 @@ function renderMobileQuests(v) {
   const slots = questSlots(v);
   const active = slots.filter((q) => !q.done).length;
   const head = h('div', { class: 'q-head m' }, h('h2', { class: 'h-card' }, 'Сайд-квесты'), h('span', { class: 'meta-12 q-meta' }, questsMeta(active, slots.length - active)));
-  if (!slots.length) {
-    return h('section', { class: 'card m-quests', 'aria-label': 'Сайд-квесты' }, head,
-      h('div', { class: 'quiet q-empty' }, h('span', { class: 'quiet-title' }, 'Активных квестов нет'),
-        h('span', { class: 'meta-13' }, 'Книги, курсы и подборки, которые качают навык, появятся здесь.')));
-  }
-  const rows = slots.map((q) => h('div', { class: 'm-q' + (q.done ? ' is-done' : '') },
-    h('div', { class: 'm-q-row' },
-      h('span', { class: 'm-q-icon' }, q.done ? icon(ICONS.trophy, 18, '#15171A', 2) : icon(skillIcon(q.skill), 18, '#15171A')),
-      h('span', { class: 'col2 grow1' }, h('span', { class: 'm-q-title' }, q.name),
-        h('span', { class: 'meta-12' }, q.done ? `Квест пройден → ${q.skill}` : q.skill)),
-      h('span', { class: 'q-label nowrap' }, q.done ? `${fmtH(q.hours)} вложено` : questLabel(q))),
-    !q.done && q.est > 0 && h('div', { class: 'bar-6 track' }, h('div', { style: `width:${questPct(q)}%` })),
-    !q.done && questOver(q) && h('span', { class: 'meta-12' }, 'часов больше оценки')));
+  if (!slots.length) return h('section', { class: 'card m-quests', 'aria-label': 'Сайд-квесты' }, head, questsEmpty());
+  const rows = slots.map((q) => {
+    const chips = questChips(q, 'mobile');
+    return h('div', { class: 'm-q' + (q.done ? ' is-done' : '') },
+      q.done && h('span', { class: 'm-q-done' }, icon(ICONS.trophy, 14, ACCENT_D, 2.2), 'Квест пройден'),
+      h('div', { class: 'm-q-row' },
+        h('span', { class: 'm-q-title' }, q.name),
+        h('span', { class: 'q-label nowrap' }, q.done ? doneMeta(q) : questLabel(q))),
+      chips.length > 0 && h('div', { class: 'q-chips' }, chips),
+      !q.done && q.est > 0 && h('div', { class: 'bar-6 track' }, h('div', { style: `width:${questPct(q)}%` })),
+      !q.done && questOver(q) && h('span', { class: 'meta-12' }, 'часов больше оценки'));
+  });
   return h('section', { class: 'card m-quests', 'aria-label': 'Сайд-квесты' }, head, rows,
     active > 3 && h('span', { class: 'meta-12 m-q-over' }, `Активных квестов ${active} — договорились о трёх`));
 }
@@ -863,4 +879,4 @@ function renderMain(v, ui) {
   return root;
 }
 
-window.VitrinaView = { blockErrors, renderMain, renderStatus, changesSummary, MOBILE_MQ };
+window.VitrinaView = { questLabel, blockErrors, renderMain, renderStatus, changesSummary, MOBILE_MQ };

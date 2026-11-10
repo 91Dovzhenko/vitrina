@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-10.10';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-10.22';
 
 // Не секретны: ID клиента OAuth и ID рабочей таблицы.
 const CLIENT_ID = '691644833271-fdg5938hbajg5vvbl0ajq9d37bdl8l94.apps.googleusercontent.com';
@@ -465,9 +465,10 @@ function renderReport(v) {
     section('Цели', goals.length ? goals : h('p', { class: 'meta' }, 'Активных целей нет')),
     section('Лента событий', feed.length ? table(['День', 'Событие'], feed) : h('p', { class: 'meta' }, 'Событий пока нет')),
     section('Сайд-квесты (лист «Проекты», только «Квест» = TRUE)', (v.quests || []).length
-      ? table(['Квест', 'Навык', 'Статус', 'Часы квеста', 'Оценка', 'На витрине', 'Прогресс', 'Закрыт'],
-        v.quests.map((q) => [q.name, q.skill, q.status, fmtH(q.hours), q.est == null ? '—' : fmtH(q.est),
-          q.status === 'incomplete' ? (q.est > 0 ? `${fmtNum(q.hours)} из ${fmtNum(q.est)} ч` : fmtH(q.hours)) : '—',
+      ? table(['Квест', 'Навыки из «Задач» (часы)', 'Сумма по навыкам', 'Статус', 'Часы квеста', 'Оценка', 'На витрине', 'Прогресс', 'Закрыт'],
+        v.quests.map((q) => [q.name, (q.skills || []).map((sk) => `${sk.name} ${fmtH(sk.hours)}`).join(', ') || '—',
+          fmtH((q.skills || []).reduce((a, sk) => a + sk.hours, 0)), q.status, fmtH(q.hours), q.est == null ? '—' : fmtH(q.est),
+          q.status === 'incomplete' ? window.VitrinaView.questLabel(q) : '—',
           q.est > 0 ? fmtPct((q.hours / q.est) * 100) : '—', q.closedAt ? fmtDate(q.closedAt) : '—']))
       : h('p', { class: 'meta' }, 'Квестов нет')),
     section('План на сегодня (лист «План»)', !v.plan || v.plan.missing ? h('p', { class: 'meta' }, 'Листа нет или он пуст')

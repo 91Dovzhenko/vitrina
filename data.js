@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-10.10';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-10.22';
 // Слой данных: разбор листов и расчёты. Чистые функции, без DOM и без сети.
 
 const RANGES = {
@@ -118,10 +118,11 @@ function parseAll(valueRanges) {
   const tasks = rowsByHeader(byName.tasks, {
     closed: 'Дата закрытия', hours: 'Часы', skills: 'Навыки итог',
     nSkills: 'Число навыков', perSkill: 'Часов на навык', check: 'Проверить', loaded: 'Загружено',
+    pid: 'project_id', // только чтобы сопоставить задачу с квестом
   })
     .map((t) => ({
       date: toDate(t.closed), hours: num(t.hours), skills: splitSkills(t.skills),
-      perSkill: num(t.perSkill), check: str(t.check) !== '',
+      perSkill: num(t.perSkill), check: str(t.check) !== '', pid: str(t.pid),
     }))
     .filter((t) => t.date);
 
@@ -170,7 +171,7 @@ function parseAll(valueRanges) {
     if (k) settings.set(k, row[1]);
   }
 
-  const quests = parseQuests(byName.projects, new Set(skills.map((x) => x.name)));
+  const quests = parseQuests(byName.projects);
   byName.projects = null; // остальные проекты не держим
   const plan = parsePlan(byName.plan, missing.has('plan'));
 
@@ -178,19 +179,32 @@ function parseAll(valueRanges) {
 }
 
 // ---------- Сайд-квесты (лист «Проекты», 09_ТЗ, раздел 3) ----------
-// Берём только строки с «Квест» = TRUE и навыком из листа «Навыки»; остальное отбрасываем сразу.
-function parseQuests(values, skillNames) {
+// Квест — проект с «Квест» = TRUE; остальные строки отбрасываем сразу.
+// Одного навыка у квеста нет: навыки и их часы считаются в compute() из «Задач» по project_id.
+function parseQuests(values) {
   return rowsByHeader(values, {
     id: 'things_id', name: 'Название', status: 'Статус в Things', quest: 'Квест',
-    skill: 'Навык квеста', est: 'Оценка квеста ч', hours: 'Часы квеста', closed: 'Дата закрытия',
+    est: 'Оценка квеста ч', hours: 'Часы квеста', closed: 'Дата закрытия',
   })
     .filter((q) => bool(q.quest))
     .map((q) => ({
       id: str(q.id) || str(q.name), name: str(q.name), status: str(q.status).toLowerCase(),
-      skill: str(q.skill), est: str(q.est) === '' ? null : num(q.est), hours: num(q.hours),
+      est: str(q.est) === '' ? null : num(q.est), hours: num(q.hours),
       closedAt: toDate(q.closed),
     }))
-    .filter((q) => q.name && q.skill && skillNames.has(q.skill));
+    .filter((q) => q.name);
+}
+
+// Навыки квеста: закрытые задачи с project_id = things_id квеста; каждому навыку из
+// «Навыки итог» — «Часов на навык». По убыванию часов. Только навыки из листа «Навыки».
+function questSkills(q, tasks, activeNames) {
+  if (Array.isArray(q.skillsPreset)) return q.skillsPreset; // демо
+  const m = new Map();
+  for (const t of tasks) {
+    if (!t.pid || t.pid !== q.id) continue;
+    for (const s of t.skills) if (activeNames.has(s) && t.perSkill > EPS) m.set(s, (m.get(s) || 0) + t.perSkill);
+  }
+  return [...m].map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours || a.name.localeCompare(b.name, 'ru'));
 }
 
 // ---------- План на сегодня (лист «План», 09_ТЗ, раздел 4) ----------
@@ -368,15 +382,18 @@ function compute(data, now = new Date(), focusOverride = null) {
   const growingSkill = weekRank.length ? { name: weekRank[0][0], hours: weekRank[0][1] } : null;
 
   // 8. Лента событий.
-  const quests = data.quests || [];
+  const quests = (data.quests || []).map((q) => ({ ...q, skills: questSkills(q, tasks, activeNames) }));
   const feed = buildFeed(tasks, steps, curve, activeNames, quests);
 
-  // Сайд-квесты: активные — incomplete, в порядке листа; метки узлов по навыку.
+  // Сайд-квесты: активные — incomplete, в порядке листа. Метка на узле — у каждого навыка,
+  // куда активный квест уже дал часы; строка подсказки — с часами этого навыка из квеста.
   const activeQuests = quests.filter((q) => q.status === 'incomplete');
   const questsBySkill = new Map();
   for (const q of activeQuests) {
-    if (!questsBySkill.has(q.skill)) questsBySkill.set(q.skill, []);
-    questsBySkill.get(q.skill).push(q);
+    for (const sk of q.skills) {
+      if (!questsBySkill.has(sk.name)) questsBySkill.set(sk.name, []);
+      questsBySkill.get(sk.name).push({ quest: q, hours: sk.hours });
+    }
   }
   const plan = data.plan || { missing: true };
   const planFresh = plan.missing ? null : planFreshness(plan.cut, now);
@@ -436,7 +453,7 @@ function buildFeed(tasks, steps, curve, activeNames, quests = []) {
 
   // «Квест пройден: <название> → <навык>» — по дате закрытия проекта.
   for (const q of quests) {
-    if (q.status === 'completed' && q.closedAt) events.push({ type: 'quest', date: q.closedAt, name: q.name, skill: q.skill, order: 3 });
+    if (q.status === 'completed' && q.closedAt) events.push({ type: 'quest', date: q.closedAt, name: q.name, order: 3 });
   }
 
   // «Взята ступень „…“».
