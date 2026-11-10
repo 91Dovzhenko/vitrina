@@ -439,13 +439,6 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 
 /* План */
 .plan { display: flex; flex-direction: column; gap: 16px; }
-.plan-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.plan-stamp { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-.plan-stamp.is-stale { font-weight: 700; color: var(--text); background: var(--chip); border-radius: 999px; padding: 4px 10px; }
-.plan-top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
-.plan-num { display: flex; flex-direction: column; gap: 4px; }
-.plan-num-row { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
-.plan-u { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 4px; }
 .plan-areas { display: flex; flex-direction: column; }
 .plan-area { border-top: 1px solid #F0F1EC; }
 .plan-area-btn:focus-visible { outline: 3px solid var(--accent-dark); outline-offset: 2px; }
@@ -507,7 +500,7 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 8px
 .plan-dot-wrap { display: flex; flex-shrink: 0; }
 .plan-dot.is-going { transform: rotate(-90deg); }
 span.plan-dot.is-done { border-radius: 50%; background: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.plan-h { font-size: 13px; white-space: nowrap; }
+.plan-h { font-size: 13px; white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .plan-h b { font-weight: 800; }
 .plan-h-of { color: var(--muted); font-weight: 600; }
 .plan-h.is-idle { font-weight: 600; color: var(--text-2); }
@@ -517,3 +510,33 @@ span.plan-dot.is-done { border-radius: 50%; background: var(--accent-dark); disp
 .plan-project .plan-project-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .plan-project.is-done .plan-project-name { font-weight: 700; color: var(--accent-dark); }
 .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* План: цифры в два уровня, строка среза, длинные имена (Spec, раздел 8, правка 2) */
+/* Ноутбук: левая колонка 272 — при «11:45» и «3 из 17» пара еле помещается: зазоры 10, при нехватке значение уходит под подпись. */
+.plan-top { display: flex; align-items: stretch; gap: 10px; }
+.plan-main { display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; flex-shrink: 0; }
+.plan-big { font-family: Unbounded, Manrope, sans-serif; font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.plan-pair { flex: 1; min-width: 0; border-left: 1px solid var(--line); padding-left: 10px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.plan-pair-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 4px; }
+.plan-pair-row b { margin-left: auto; }
+.plan-pair-k { font-size: 12px; font-weight: 600; color: var(--muted); }
+.plan-pair-row b { font-size: 15px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plan-progress { display: flex; flex-direction: column; gap: 8px; }
+.plan-stamp { align-self: flex-start; display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.plan-stamp svg { flex-shrink: 0; }
+.plan-stamp.is-stale { font-weight: 700; color: var(--text); background: var(--chip); border-radius: 999px; padding: 4px 10px; }
+.plan-area-btn, .plan-project { position: relative; }
+.plan-area-name, .plan-project-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-name-tip { position: absolute; left: 14px; bottom: calc(100% + 6px); z-index: 2; background: var(--text); color: #fff; font-size: 12px; font-weight: 700; border-radius: 10px; padding: 6px 10px; white-space: nowrap; box-shadow: 0 8px 20px rgba(21, 23, 26, 0.2); pointer-events: none; }
+@media (max-width: 767px) {
+  .plan-top { gap: 16px; }
+  .plan-big { font-size: 36px; }
+  .plan-pair { padding-left: 16px; }
+  .plan-pair-k { font-size: 13px; }
+  .plan-pair-row b { font-size: 16px; }
+  .plan-area-btn { min-height: 48px; }
+  .plan-area-name { font-size: 15px; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  .plan-area-btn .plan-h { font-size: 14px; }
+  .plan-project-name { font-size: 14px; line-height: 1.35; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  .plan-project .plan-h { font-size: 14px; }
+}

@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-10.6';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-10.10';
 // Слой данных: разбор листов и расчёты. Чистые функции, без DOM и без сети.
 
 const RANGES = {
@@ -240,18 +240,18 @@ function parsePlan(values, missing) {
 
 // Свежесть среза от его возраста: fresh — серое время; stale — сегодня, старше часа; old — не сегодня.
 function planFreshness(cut, now) {
-  if (!cut) return { kind: 'fresh', label: 'план без времени среза' };
+  if (!cut) return { kind: 'fresh', label: 'данные из Things, время среза неизвестно' };
   const hm = `${cut.getHours()}:${String(cut.getMinutes()).padStart(2, '0')}`;
   const hm2 = hm.padStart(5, '0');
   const age = now - cut;
   const sameDay = dayKey(cut) === dayKey(now);
-  if (sameDay && age < 3600000) return { kind: 'fresh', label: `план на ${hm2}` };
-  if (sameDay) return { kind: 'stale', label: `план на ${hm2} · ${Math.floor(age / 3600000)} ч назад` };
+  if (sameDay && age < 3600000) return { kind: 'fresh', label: `данные из Things на ${hm2}` };
+  if (sameDay) return { kind: 'stale', label: `данные на ${hm2} · ${Math.floor(age / 3600000)} ч назад` };
   const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  if (dayKey(cut) === dayKey(y)) return { kind: 'old', label: `план на вчера, ${hm2}` };
+  if (dayKey(cut) === dayKey(y)) return { kind: 'old', label: `данные на вчера, ${hm2}` };
   const MON = ['янв', 'февр', 'марта', 'апр', 'мая', 'июня', 'июля', 'авг', 'сент', 'окт', 'нояб', 'дек'];
   const yr = cut.getFullYear() !== now.getFullYear() ? ` ${cut.getFullYear()}` : '';
-  return { kind: 'old', label: `план на ${cut.getDate()} ${MON[cut.getMonth()]}.${yr}, ${hm2}` };
+  return { kind: 'old', label: `данные на ${cut.getDate()} ${MON[cut.getMonth()]}.${yr}, ${hm2}` };
 }
 
 // ---------- Расчёты (раздел 6 ТЗ) ----------

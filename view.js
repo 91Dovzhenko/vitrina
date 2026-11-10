@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.6';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.10';
 // Экран «обычный день» по design/Main.dc.html. Только показ, без правки данных.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -24,6 +24,7 @@ const ICONS = {
   trophy: 'M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M9 20h6 M10 17h4',
   flag: 'M5 21V4 M5 4h11l-2 4l2 4H5',
   chevron: 'M6 9l6 6l6-6',
+  clock: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18z M12 7.5V12l3 2',
   // Нейтральная иконка-узел для навыка без своей иконки.
   node: 'M12 8a4 4 0 1 1 0 8a4 4 0 1 1 0-8z M12 3v5 M12 16v5 M3 12h5 M16 12h5',
 };
@@ -715,16 +716,11 @@ function renderMobileQuests(v) {
 }
 
 // ---------- План на сегодня (09_ТЗ, раздел 4; Spec, раздел 8) ----------
-// 8,5 ч → [{n:'8',u:'ч'},{n:'30',u:'м'}]; 0 → [{n:'0',u:'м'}].
-function hoursParts(x) {
+// Длительности в плане — таймер ч:мм без единиц: 8,5 → «8:30», 0,75 → «0:45». Только в этом блоке.
+function planClock(x) {
   const m = Math.round((Number(x) || 0) * 60);
-  const hh = Math.floor(m / 60), mm = m % 60;
-  const out = [];
-  if (hh) out.push({ n: String(hh), u: 'ч' });
-  if (mm || !hh) out.push({ n: String(mm), u: 'м' });
-  return out;
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
 }
-function hoursText(x) { return hoursParts(x).map((p) => p.n + NBSP + p.u).join(' '); }
 function tasksWord(k) { return plural(k, ['задача', 'задачи', 'задач']); }
 
 // Статус строки плана — только по часам (минутам): не начато / в процессе / сделано.
@@ -761,42 +757,61 @@ function planDot(st, size) {
 // Часы справа: не начато — только план; в процессе — «сделано / план»; сделано — план акцентом.
 function planHours(st, done, planned) {
   if (st.kind === 'going') {
-    return h('span', { class: 'plan-h' }, h('b', {}, hoursText(done)), h('span', { class: 'plan-h-of' }, ` / ${hoursText(planned)}`));
+    return h('span', { class: 'plan-h' }, h('b', {}, planClock(done)), h('span', { class: 'plan-h-of' }, ` / ${planClock(planned)}`));
   }
-  return h('span', { class: 'plan-h' + (st.kind === 'done' ? ' is-done' : ' is-idle') }, hoursText(planned));
+  return h('span', { class: 'plan-h' + (st.kind === 'done' ? ' is-done' : ' is-idle') }, planClock(planned));
+}
+
+// Имя области/проекта: на ноутбуке — одна строка с многоточием и тёмной подсказкой
+// при наведении (только если имя обрезано), на телефоне — перенос (CSS). Полное имя — и в title.
+function planName(text, cls) {
+  const el = h('span', { class: cls, title: text }, text);
+  el.addEventListener('mouseenter', () => {
+    if (MOBILE_MQ.matches || el.scrollWidth <= el.clientWidth) return;
+    const row = el.parentElement;
+    if (!row || row.querySelector('.plan-name-tip')) return;
+    row.append(h('span', { class: 'plan-name-tip', role: 'tooltip' }, text));
+  });
+  el.addEventListener('mouseleave', () => {
+    const t = el.parentElement && el.parentElement.querySelector('.plan-name-tip');
+    if (t) t.remove();
+  });
+  return el;
+}
+
+// Строка среза под полосой: иконка часов + «данные из Things на 14:20»; устаревший — на плашке.
+function planStamp(f) {
+  return h('span', { class: 'plan-stamp' + (f.kind === 'fresh' ? '' : ' is-stale') },
+    icon(ICONS.clock, 12, '#8E9289', 2.2), f.label);
 }
 
 function renderPlan(v, ui) {
   const p = v.plan || { missing: true };
-  const card = (...kids) => h('section', { class: 'card plan', 'aria-label': 'План на сегодня' }, ...kids);
+  const title = h('h2', { class: 'h-card' }, 'План на сегодня');
+  const card = (...kids) => h('section', { class: 'card plan', 'aria-label': 'План на сегодня' }, title, ...kids);
   if (p.missing) {
-    return card(h('div', { class: 'plan-head' }, h('h2', { class: 'h-card' }, 'План на сегодня')),
-      h('div', { class: 'plan-quiet' }, h('span', { class: 'quiet-title' }, 'План пока не загружался'),
-        h('span', { class: 'meta-13' }, 'Появится, когда скрипт на Mac выгрузит «Сегодня» из Things.')));
+    return card(h('div', { class: 'plan-quiet' }, h('span', { class: 'quiet-title' }, 'План пока не загружался'),
+      h('span', { class: 'meta-13' }, 'Появится, когда скрипт на Mac выгрузит «Сегодня» из Things.')));
   }
   const f = v.planFresh || { kind: 'fresh', label: '' };
-  const head = h('div', { class: 'plan-head' }, h('h2', { class: 'h-card' }, 'План на сегодня'),
-    h('span', { class: 'plan-stamp' + (f.kind === 'fresh' ? '' : ' is-stale') }, f.label));
   if (p.empty) {
-    return card(head, h('div', { class: 'plan-quiet' }, h('span', { class: 'quiet-title' }, 'В «Сегодня» пусто'),
-      h('span', { class: 'meta-13' }, 'На сегодня в Things ничего не запланировано.')));
+    return card(h('div', { class: 'plan-quiet' }, h('span', { class: 'quiet-title' }, 'В «Сегодня» пусто'),
+      h('span', { class: 'meta-13' }, 'На сегодня в Things ничего не запланировано.')), planStamp(f));
   }
-  const top = [
-    ['запланировано', hoursParts(p.planned)],
-    ['осталось', hoursParts(Math.max(0, p.planned - p.done))],
-    ['выполнено', hoursParts(p.done)],
-    ['задач', [{ n: String(p.doneTasks), u: `из ${p.tasks}` }]],
-  ].map(([label, parts]) => h('div', { class: 'plan-num' },
-    h('span', { class: 'plan-num-row' }, parts.flatMap((pp) => [h('span', { class: 'num-20' }, pp.n), h('span', { class: 'plan-u' }, pp.u)])),
-    h('span', { class: 'meta-12' }, label)));
+  // Цифры в два уровня: «запланировано» крупно; справа через линию — «осталось» и «задачи».
   const pctOf = (d, pl) => (pl > 0 ? Math.max(0, Math.min(100, (d / pl) * 100)) : 0);
+  const top = h('div', { class: 'plan-top' },
+    h('div', { class: 'plan-main' }, h('span', { class: 'plan-big' }, planClock(p.planned)), h('span', { class: 'meta-12' }, 'запланировано')),
+    h('div', { class: 'plan-pair' },
+      h('span', { class: 'plan-pair-row' }, h('span', { class: 'plan-pair-k' }, 'осталось'), h('b', {}, planClock(Math.max(0, p.planned - p.done)))),
+      h('span', { class: 'plan-pair-row' }, h('span', { class: 'plan-pair-k' }, 'задачи'), h('b', {}, `${p.doneTasks} из ${p.tasks}`))));
   const areas = p.areas.map((a) => {
     const open = ui.openArea === a.name;
     const id = 'plan-area-' + p.areas.indexOf(a);
     const st = planStatus(a.done, a.planned);
     const btn = h('button', { type: 'button', class: 'plan-area-btn', 'aria-expanded': String(open), 'aria-controls': id },
       planDot(st, 18),
-      h('span', { class: 'plan-area-name' }, a.name),
+      planName(a.name, 'plan-area-name'),
       planHours(st, a.done, a.planned),
       h('span', { class: 'plan-chev' }, icon(ICONS.chevron, 12, '#8E9289', 2.4)));
     btn.addEventListener('click', () => ui.toggleArea(a.name));
@@ -806,13 +821,14 @@ function renderPlan(v, ui) {
           const ps = planStatus(pr.done, pr.planned);
           return h('div', { class: 'plan-project' + (ps.kind === 'done' ? ' is-done' : '') },
             planDot(ps, 14),
-            h('span', { class: 'plan-project-name' }, pr.project),
+            planName(pr.project, 'plan-project-name'),
             planHours(ps, pr.done, pr.planned));
         })));
   });
-  return card(head,
-    h('div', { class: 'plan-top' }, top),
-    h('div', { class: 'bar-8 w100' }, h('div', { style: `width:${pctOf(p.done, p.planned)}%` })),
+  return card(top,
+    h('div', { class: 'plan-progress' },
+      h('div', { class: 'bar-8 w100' }, h('div', { style: `width:${pctOf(p.done, p.planned)}%` })),
+      planStamp(f)),
     h('div', { class: 'plan-areas' }, areas),
     p.noEst > 0 && h('span', { class: 'meta-12 plan-noest' }, `без оценки: ${p.noEst} ${tasksWord(p.noEst)}`));
 }
