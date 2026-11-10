@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.34';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.41';
 // Экран «обычный день» по design/Main.dc.html. Только показ, без правки данных.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -795,35 +795,20 @@ function planName(text, cls) {
   return el;
 }
 
-// Цифры сверху не помещаются (напр. «12:30» и «100 из 120» в колонке 272):
-// 1) сжимаем зазор между большой цифрой и колонкой (14 → 4, на телефоне 16 → 4);
-// 2) сжимаем зазор между подписью и значением в колонке (8 → 4);
-// 3) уменьшаем большую цифру, пока она шире подписи «запланировано» (32 → 24, тел. 36 → 26);
-// 4) если и так тесно — колонка встаёт под большую цифру (та же сетка, на всю ширину).
-// Значения справа не переносятся и не сжимаются никогда.
+// Стопка — только запасной случай (Spec, раздел 8): если «запланировано» + 12 + линия 1 + 12 +
+// правая колонка по своей ширине (max-content) больше ширины содержимого карточки
+// (например, «1000 из 1200»). Решение — по фактическому замеру. На телефоне стопки нет.
 function fitPlanTop(top) {
-  const big = top.querySelector('.plan-big');
+  const main = top.querySelector('.plan-main');
   const pair = top.querySelector('.plan-pair');
-  const label = top.querySelector('.plan-main .meta-12');
-  if (!big || !pair || !top.clientWidth) return;
-  const mobile = MOBILE_MQ.matches;
-  let gap = mobile ? 16 : 14, col = 8, size = mobile ? 36 : 32;
-  const minSize = mobile ? 26 : 24;
+  if (!main || !pair || !top.clientWidth) return;
   top.classList.remove('is-stacked');
-  const apply = () => {
-    top.style.setProperty('--plan-gap', gap + 'px');
-    top.style.setProperty('--plan-col', col + 'px');
-    big.style.fontSize = size + 'px';
-  };
-  const tight = () => pair.scrollWidth > pair.clientWidth + 0.5 || top.scrollWidth > top.clientWidth + 0.5;
-  apply();
-  while (tight() && gap > 4) { gap -= 1; apply(); }
-  while (tight() && col > 4) { col -= 1; apply(); }
-  while (tight() && size > minSize && big.getBoundingClientRect().width > label.getBoundingClientRect().width) { size -= 1; apply(); }
-  if (tight()) {
-    gap = mobile ? 16 : 14; col = 8; size = mobile ? 36 : 32; apply();
-    top.classList.add('is-stacked');
-  }
+  if (MOBILE_MQ.matches) return;
+  // Ширина текста (max-content), а не растянутого блока.
+  const textW = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().width; };
+  const colW = Math.max(...[...pair.querySelectorAll('.plan-pair-k, .plan-pair-v')].map(textW));
+  const need = main.getBoundingClientRect().width + 12 + 1 + 12 + colW;
+  if (need > top.clientWidth + 0.5) top.classList.add('is-stacked');
 }
 const planTopFit = new ResizeObserver((entries) => { for (const e of entries) fitPlanTop(e.target); });
 
@@ -850,10 +835,10 @@ function renderPlan(v, ui) {
   const pctOf = (d, pl) => (pl > 0 ? Math.max(0, Math.min(100, (d / pl) * 100)) : 0);
   const top = h('div', { class: 'plan-top' },
     h('div', { class: 'plan-main' }, h('span', { class: 'plan-big' }, planClock(p.planned)), h('span', { class: 'meta-12' }, 'запланировано')),
-    // Одна сетка на обе строки: подпись слева, значение справа на той же строке, без переносов.
+    // Две пары «подпись над значением»; без переносов. Раскладка одна всегда.
     h('div', { class: 'plan-pair' },
-      h('span', { class: 'plan-pair-k' }, 'осталось'), h('b', { class: 'plan-pair-v' }, planClock(Math.max(0, p.planned - p.done))),
-      h('span', { class: 'plan-pair-k' }, 'задачи'), h('b', { class: 'plan-pair-v' }, `${p.doneTasks} из ${p.tasks}`)));
+      h('span', { class: 'plan-pair-item' }, h('span', { class: 'plan-pair-k' }, 'осталось'), h('b', { class: 'plan-pair-v' }, planClock(Math.max(0, p.planned - p.done)))),
+      h('span', { class: 'plan-pair-item' }, h('span', { class: 'plan-pair-k' }, 'задачи'), h('b', { class: 'plan-pair-v' }, `${p.doneTasks} из ${p.tasks}`))));
   planTopFit.observe(top);
   const areas = p.areas.map((a) => {
     const open = ui.openArea === a.name;
