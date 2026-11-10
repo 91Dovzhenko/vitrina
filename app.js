@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-10.22';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).app = '2026-11-10.34';
 
 // Не секретны: ID клиента OAuth и ID рабочей таблицы.
 const CLIENT_ID = '691644833271-fdg5938hbajg5vvbl0ajq9d37bdl8l94.apps.googleusercontent.com';
@@ -319,6 +319,8 @@ function showData(view) {
   $('sub').textContent = view.firstTask ? `Виталий · система идёт с ${fmtDate(view.firstTask)}` : 'Виталий';
   $('sub-m').textContent = `Обновлено ${updated}`;
   $('app-main').replaceChildren(window.VitrinaView.renderMain(view, ui));
+  // Цифры плана подгоняются сразу после вставки (и потом — при изменении ширины).
+  document.querySelectorAll('.plan-top').forEach((el) => window.VitrinaView.fitPlanTop(el));
   if (CHECK_MODE) renderReport(view); else $('report').replaceChildren();
   $('screen-login').hidden = true;
   $('screen-data').hidden = false;

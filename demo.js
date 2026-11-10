@@ -1,13 +1,15 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-10.22';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).demo = '2026-11-10.34';
 // ?demo=normal|changes|levelup|goal|empty|goals — данные-примеры из design/Main.dc.html.
 // Не из таблицы: работают без входа и только для проверки состояний.
 
 (function () {
   const VARIANTS = ['normal', 'changes', 'levelup', 'goal', 'empty', 'goals',
     // Сайд-квесты и план на сегодня (холст, ряд QP_*).
-    'questdone', 'noquests', 'manyquests', 'planmorning', 'planstale', 'planold', 'planempty'];
+    'questdone', 'noquests', 'manyquests', 'planmorning', 'planstale', 'planold', 'planempty',
+    // Худший случай цифр плана: «12:30», «осталось 10:45», «задачи 100 из 120».
+    'planbig'];
   const QP = new Set(VARIANTS.slice(6));
   // Состояния QP_* построены на «обычном дне».
   const baseOf = (v) => (QP.has(v) ? 'normal' : v);
@@ -124,6 +126,22 @@
       : QP.has(v) ? at(5, 14, 20) : new Date(now.getTime() - 10 * 60000);
     if (v === 'planempty') {
       return { missing: false, cut, day: now, areas: [], empty: true, planned: 0, done: 0, tasks: 0, doneTasks: 0, noEst: 0 };
+    }
+    if (v === 'planbig') {
+      const big = [
+        { area: 'Проекты', project: 'Финансовая модель', tasks: 40, doneTasks: 35, planned: 4.5, done: 0.75, noEst: 0 },
+        { area: 'Проекты', project: 'Очень длинное название проекта для проверки многоточия', tasks: 30, doneTasks: 25, planned: 3, done: 0.5, noEst: 0 },
+        { area: 'Личное', project: 'Личное', tasks: 35, doneTasks: 30, planned: 3.5, done: 0.5, noEst: 0 },
+        { area: 'Обучение', project: 'Чтение', tasks: 15, doneTasks: 10, planned: 1.5, done: 0, noEst: 0 },
+      ];
+      const areas = [];
+      for (const it of big) {
+        let a = areas.find((x) => x.name === it.area);
+        if (!a) { a = { name: it.area, planned: 0, done: 0, tasks: 0, doneTasks: 0, projects: [] }; areas.push(a); }
+        a.planned += it.planned; a.done += it.done; a.tasks += it.tasks; a.doneTasks += it.doneTasks; a.projects.push(it);
+      }
+      const sumB = (k) => big.reduce((x, it) => x + it[k], 0);
+      return { missing: false, cut, day: now, areas, empty: false, planned: sumB('planned'), done: sumB('done'), tasks: sumB('tasks'), doneTasks: sumB('doneTasks'), noEst: 0 };
     }
     const morning = v === 'planmorning';
     const P = (area, project, tasks, planned, doneTasks, done, noEst = 0) => ({

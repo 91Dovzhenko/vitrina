@@ -506,15 +506,13 @@ span.plan-dot.is-done { border-radius: 50%; background: var(--accent-dark); disp
 .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* План: цифры в два уровня, строка среза, длинные имена (Spec, раздел 8, правка 2) */
-/* Ноутбук: левая колонка 272 — при «11:45» и «3 из 17» пара еле помещается: зазоры 10, при нехватке значение уходит под подпись. */
-.plan-top { display: flex; align-items: stretch; gap: 10px; }
+/* Зазор между большой цифрой и колонкой — переменная: fitPlanTop() сжимает его при нехватке места. */
+.plan-top { display: flex; align-items: stretch; gap: var(--plan-gap, 14px); }
 .plan-main { display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; flex-shrink: 0; }
 .plan-big { font-family: Unbounded, Manrope, sans-serif; font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
-.plan-pair { flex: 1; min-width: 0; border-left: 1px solid var(--line); padding-left: 10px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
-.plan-pair-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 4px; }
-.plan-pair-row b { margin-left: auto; }
-.plan-pair-k { font-size: 12px; font-weight: 600; color: var(--muted); }
-.plan-pair-row b { font-size: 15px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plan-pair { flex: 1; min-width: 0; border-left: 1px solid var(--line); padding-left: var(--plan-gap, 14px); display: grid; grid-template-columns: max-content max-content; justify-content: space-between; align-content: center; align-items: baseline; gap: 8px var(--plan-col, 8px); }
+.plan-pair-k { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.plan-pair-v { font-size: 15px; font-weight: 800; white-space: nowrap; text-align: right; justify-self: end; font-variant-numeric: tabular-nums; }
 .plan-progress { display: flex; flex-direction: column; gap: 8px; }
 .plan-stamp { align-self: flex-start; display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .plan-stamp svg { flex-shrink: 0; }
@@ -523,11 +521,9 @@ span.plan-dot.is-done { border-radius: 50%; background: var(--accent-dark); disp
 .plan-area-name, .plan-project-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-name-tip { position: absolute; left: 14px; bottom: calc(100% + 6px); z-index: 2; background: var(--text); color: #fff; font-size: 12px; font-weight: 700; border-radius: 10px; padding: 6px 10px; white-space: nowrap; box-shadow: 0 8px 20px rgba(21, 23, 26, 0.2); pointer-events: none; }
 @media (max-width: 767px) {
-  .plan-top { gap: 16px; }
   .plan-big { font-size: 36px; }
-  .plan-pair { padding-left: 16px; }
   .plan-pair-k { font-size: 13px; }
-  .plan-pair-row b { font-size: 16px; }
+  .plan-pair-v { font-size: 16px; }
   .plan-area-btn { min-height: 48px; }
   .plan-area-name { font-size: 15px; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
   .plan-area-btn .plan-h { font-size: 14px; }
@@ -546,3 +542,6 @@ span.plan-dot.is-done { border-radius: 50%; background: var(--accent-dark); disp
 .q-label { font-variant-numeric: tabular-nums; }
 .m-q .q-label { line-height: 1.5; }
 .m-q-done { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--accent-dark); }
+/* Худший случай цифр плана: колонка под большой цифрой, та же сетка на всю ширину. */
+.plan-top.is-stacked { flex-direction: column; gap: 12px; }
+.plan-top.is-stacked .plan-pair { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 12px; }
