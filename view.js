@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-10.41';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).view = '2026-11-11.1';
 // Экран «обычный день» по design/Main.dc.html. Только показ, без правки данных.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -795,8 +795,9 @@ function planName(text, cls) {
   return el;
 }
 
-// Стопка — только запасной случай (Spec, раздел 8): если «запланировано» + 12 + линия 1 + 12 +
-// правая колонка по своей ширине (max-content) больше ширины содержимого карточки
+// Стопка — только запасной случай (Spec, раздел 8): если большая цифра + 12 + линия 1 + 12 +
+// правая колонка по своей ширине больше ширины содержимого карточки. Ширину колонки задаёт
+// самое длинное значение («100 из 120»), а не подпись «запланировано»
 // (например, «1000 из 1200»). Решение — по фактическому замеру. На телефоне стопки нет.
 function fitPlanTop(top) {
   const main = top.querySelector('.plan-main');
@@ -806,7 +807,7 @@ function fitPlanTop(top) {
   if (MOBILE_MQ.matches) return;
   // Ширина текста (max-content), а не растянутого блока.
   const textW = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().width; };
-  const colW = Math.max(...[...pair.querySelectorAll('.plan-pair-k, .plan-pair-v')].map(textW));
+  const colW = Math.max(...[...pair.querySelectorAll('.plan-pair-v')].map(textW));
   const need = main.getBoundingClientRect().width + 12 + 1 + 12 + colW;
   if (need > top.clientWidth + 0.5) top.classList.add('is-stacked');
 }
@@ -834,10 +835,11 @@ function renderPlan(v, ui) {
   // Цифры в два уровня: «запланировано» крупно; справа через линию — «осталось» и «задачи».
   const pctOf = (d, pl) => (pl > 0 ? Math.max(0, Math.min(100, (d / pl) * 100)) : 0);
   const top = h('div', { class: 'plan-top' },
-    h('div', { class: 'plan-main' }, h('span', { class: 'plan-big' }, planClock(p.planned)), h('span', { class: 'meta-12' }, 'запланировано')),
+    // Главная — «осталось» (= запланировано − выполнено): днём смотрят её, утром она равна плану.
+    h('div', { class: 'plan-main' }, h('span', { class: 'plan-big' }, planClock(Math.max(0, p.planned - p.done))), h('span', { class: 'meta-12' }, 'осталось')),
     // Две пары «подпись над значением»; без переносов. Раскладка одна всегда.
     h('div', { class: 'plan-pair' },
-      h('span', { class: 'plan-pair-item' }, h('span', { class: 'plan-pair-k' }, 'осталось'), h('b', { class: 'plan-pair-v' }, planClock(Math.max(0, p.planned - p.done)))),
+      h('span', { class: 'plan-pair-item' }, h('span', { class: 'plan-pair-k' }, 'запланировано'), h('b', { class: 'plan-pair-v' }, planClock(p.planned))),
       h('span', { class: 'plan-pair-item' }, h('span', { class: 'plan-pair-k' }, 'задачи'), h('b', { class: 'plan-pair-v' }, `${p.doneTasks} из ${p.tasks}`))));
   planTopFit.observe(top);
   const areas = p.areas.map((a) => {

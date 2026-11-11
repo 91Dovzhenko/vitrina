@@ -1,6 +1,6 @@
 'use strict';
 // Сборка: должна совпадать с <meta name="vitrina-build"> в index.html (см. bump-version.sh).
-(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-10.41';
+(window.VITRINA_BUILD = window.VITRINA_BUILD || {}).data = '2026-11-11.1';
 // Слой данных: разбор листов и расчёты. Чистые функции, без DOM и без сети.
 
 const RANGES = {
